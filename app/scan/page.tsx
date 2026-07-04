@@ -8,6 +8,7 @@ import { InsightCard } from "@/components/InsightCard";
 import { Mascot } from "@/components/Mascot";
 import { Sparkles } from "@/components/Sparkles";
 import { categoryMeta } from "@/lib/categories";
+import { findDuplicate } from "@/lib/dedupe";
 import { money, relativeDay, timeOfDay } from "@/lib/format";
 import { revealInsights } from "@/lib/insights";
 import { parseReceipt } from "@/lib/parseReceipt";
@@ -39,6 +40,13 @@ export default function ScanPage() {
 
   const insights = useMemo(
     () => (scanned ? revealInsights(scanned, [scanned, ...receipts]) : []),
+    [scanned, receipts]
+  );
+
+  // Compare against what's already saved (receipts excludes the just-scanned
+  // one, since it isn't persisted until "Save"). Warns, never blocks.
+  const duplicate = useMemo(
+    () => (scanned ? findDuplicate(scanned, receipts) : null),
     [scanned, receipts]
   );
 
@@ -209,6 +217,30 @@ export default function ScanPage() {
             animate={{ opacity: 1 }}
             className="flex flex-1 flex-col gap-5"
           >
+            {duplicate && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-start gap-3 rounded-3xl p-4"
+                style={{
+                  background: "#fdf4e3",
+                  border: "1px solid #f6a72333",
+                }}
+              >
+                <span className="text-xl">🐾</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-display text-[15px] font-semibold text-ink">
+                    Wait — haven&apos;t we met?
+                  </p>
+                  <p className="mt-0.5 text-[13px] leading-snug text-ink-soft">
+                    This looks just like your {duplicate.merchant} receipt from{" "}
+                    {relativeDay(duplicate.date)} — same {money(duplicate.total)}{" "}
+                    total. Save again only if it&apos;s a separate trip.
+                  </p>
+                </div>
+              </motion.div>
+            )}
+
             <div className="relative">
               <Sparkles />
               <motion.div
@@ -254,6 +286,24 @@ export default function ScanPage() {
                       </motion.div>
                     ))}
                   </div>
+
+                  {scanned.calories ? (
+                    <motion.div
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.2 + scanned.items.length * 0.07 }}
+                      className="mt-4 flex items-center justify-center gap-1.5 rounded-2xl bg-ink/[0.04] py-2 text-xs text-ink-soft"
+                    >
+                      <span>🔥</span>
+                      <span>
+                        <span className="font-semibold text-ink tabular-nums">
+                          ≈ {scanned.calories.toLocaleString()}
+                        </span>{" "}
+                        kcal of food energy
+                      </span>
+                      <span className="text-ink-faint">· rough guess</span>
+                    </motion.div>
+                  ) : null}
                 </div>
 
                 <div
@@ -314,7 +364,7 @@ export default function ScanPage() {
                     "linear-gradient(150deg, var(--color-tangerine), var(--color-coral) 55%, var(--color-coral-deep))",
                 }}
               >
-                Save to my finds
+                {duplicate ? "Save anyway" : "Save to my finds"}
               </button>
             </motion.div>
           </motion.div>

@@ -49,9 +49,53 @@ function normalizeName(name: string): string {
  * ---------------------------------------------------------------- */
 
 export function revealInsights(receipt: Receipt, all: Receipt[]): Insight[] {
+  const nowDate = new Date(new Date(receipt.date).getTime());
+
+  // Two sources feed the reveal:
+  //  · observations — Claude's content-aware read on THIS receipt's items,
+  //    generated during the vision parse (empty for mock/sample scans).
+  //  · patterns — what this receipt says about YOU, spotted across history
+  //    (Claude never sees your other receipts, so only we can find these).
+  const observations = receipt.observations ?? [];
+  const patterns = patternInsights(receipt, all, nowDate);
+
+  const out: Insight[] = [];
+  const seenTitle = new Set<string>();
+  const push = (i?: Insight | null) => {
+    if (!i) return;
+    const key = i.title.toLowerCase();
+    if (seenTitle.has(key)) return;
+    seenTitle.add(key);
+    out.push(i);
+  };
+
+  // Interleave so both "what's in it" and "what it says about you" show up,
+  // leading with the richest content-aware find.
+  push(observations[0]);
+  push(patterns[0]);
+  push(observations[1]);
+  push(patterns[1]);
+  push(observations[2]);
+  push(patterns[2]);
+
+  // Guaranteed delight — even a bottle of water earns something (mock/sample
+  // scans have no observations, so this keeps its promise).
+  if (out.length < 2) push(funFact(receipt, all, nowDate));
+  if (out.length < 1) push(cheer(receipt));
+
+  return out.slice(0, 4);
+}
+
+/**
+ * The local pattern engine: what this receipt reveals about the person, read
+ * across their history. Returns insights in priority order, one per tone.
+ */
+function patternInsights(
+  receipt: Receipt,
+  all: Receipt[],
+  nowDate: Date
+): Insight[] {
   const meta = categoryMeta(receipt.category);
-  const now = new Date(receipt.date).getTime();
-  const nowDate = new Date(now);
   const out: Insight[] = [];
   const seen = new Set<string>();
 
@@ -152,11 +196,7 @@ export function revealInsights(receipt: Receipt, all: Receipt[]): Insight[] {
     });
   }
 
-  // Guaranteed delight — even a bottle of water earns something.
-  if (out.length < 2) add(funFact(receipt, all, nowDate));
-  if (out.length < 1) add(cheer(receipt));
-
-  return out.slice(0, 3);
+  return out;
 }
 
 function savingsNudge(

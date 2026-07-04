@@ -11,6 +11,7 @@ const TONE_ACCENT: Record<InsightTone, string> = {
   milestone: "#9b7bea",
   cheer: "#ff7ba0",
   category: "#ffa15b",
+  observation: "#7c9cff",
 };
 
 export function InsightCard({

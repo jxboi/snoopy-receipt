@@ -1,0 +1,155 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ *
+ * Snoopy — design tokens
+ * Warm, friendly, curious. The opposite of corporate accounting grey.
+ * ------------------------------------------------------------------ */
+@theme {
+  /* Surfaces */
+  --color-cream: #fff8f2;
+  --color-cream-deep: #ffefe3;
+  --color-paper: #ffffff;
+
+  /* Ink (warm near-black plum, never pure black) */
+  --color-ink: #2a2336;
+  --color-ink-soft: #7b7488;
+  --color-ink-faint: #a9a3b4;
+
+  /* Brand */
+  --color-coral: #ff6b5b;
+  --color-coral-deep: #f04a38;
+  --color-tangerine: #ffa15b;
+  --color-lemon: #ffd15b;
+
+  /* Category accents (used via TS map + inline styles too) */
+  --color-grocery: #34b981;
+  --color-coffee: #c07a4e;
+  --color-dining: #ff7ba0;
+  --color-transport: #5b8def;
+  --color-health: #22b8c4;
+  --color-shopping: #9b7bea;
+  --color-treats: #f6a723;
+  --color-other: #98a0b0;
+
+  /* Fonts (next/font injects the -src vars on <html>) */
+  --font-display: var(--font-display-src), ui-rounded, "Segoe UI Rounded", sans-serif;
+  --font-sans: var(--font-body-src), ui-sans-serif, system-ui, sans-serif;
+
+  /* Radii */
+  --radius-xl: 1.5rem;
+  --radius-2xl: 1.75rem;
+  --radius-3xl: 2.25rem;
+
+  /* Motion */
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-pulse-soft: pulse-soft 2.4s ease-in-out infinite;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-wag: wag 1.1s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+@keyframes pulse-soft {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.92; }
+}
+@keyframes shimmer {
+  0% { background-position: -160% 0; }
+  100% { background-position: 260% 0; }
+}
+@keyframes wag {
+  0%, 100% { transform: rotate(-9deg); }
+  50% { transform: rotate(9deg); }
+}
+
+/* ------------------------------------------------------------------ *
+ * Base
+ * ------------------------------------------------------------------ */
+:root {
+  color-scheme: light;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 50% -10%, var(--color-cream-deep), transparent 60%),
+    var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-coral) 25%, transparent);
+}
+
+/* Utilities ---------------------------------------------------------- */
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.pb-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+/* soft card shadow used across the app */
+.shadow-soft {
+  box-shadow:
+    0 1px 2px rgba(42, 35, 54, 0.04),
+    0 8px 24px -12px rgba(42, 35, 54, 0.18);
+}
+.shadow-lift {
+  box-shadow:
+    0 2px 4px rgba(42, 35, 54, 0.05),
+    0 18px 40px -18px rgba(240, 74, 56, 0.35);
+}
+
+/* the torn / perforated receipt bottom edge.
+   two mask layers: a solid fill for everything above the notch strip,
+   and a repeating scallop strip along the bottom. */
+.receipt-edge {
+  -webkit-mask:
+    linear-gradient(#000 0 0) top / 100% calc(100% - 9px) no-repeat,
+    radial-gradient(9px at 9px 0, transparent 98%, #000) bottom / 18px 9px repeat-x;
+  mask:
+    linear-gradient(#000 0 0) top / 100% calc(100% - 9px) no-repeat,
+    radial-gradient(9px at 9px 0, transparent 98%, #000) bottom / 18px 9px repeat-x;
+}
+
+/* shimmering scan bar for the "sniffing" state */
+.scan-shimmer {
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    color-mix(in srgb, var(--color-coral) 26%, transparent) 45%,
+    color-mix(in srgb, var(--color-lemon) 30%, transparent) 55%,
+    transparent 80%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+}
+
+.text-balance {
+  text-wrap: balance;
+}

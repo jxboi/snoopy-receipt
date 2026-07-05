@@ -2,7 +2,7 @@
 
 import { motion } from "motion/react";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CountUp } from "@/components/CountUp";
 import { InsightCard } from "@/components/InsightCard";
 import { Mascot } from "@/components/Mascot";
@@ -10,9 +10,39 @@ import { WeekChart } from "@/components/WeekChart";
 import { buildWeeklyReport } from "@/lib/insights";
 import { useStore } from "@/lib/store";
 
+const WEEK_VERBS = [
+  "uncovered",
+  "spotted",
+  "decoded",
+  "mapped",
+  "revealed",
+  "found",
+  "traced",
+  "noticed",
+  "sorted",
+  "charted",
+  "unpacked",
+  "tallied",
+  "collected",
+  "highlighted",
+  "discovered",
+  "sketched",
+  "translated",
+  "gathered",
+  "surfaced",
+  "framed",
+] as const;
+
 export default function InsightsPage() {
-  const { receipts, reset } = useStore();
+  const { receipts } = useStore();
+  const [weekVerb, setWeekVerb] = useState<(typeof WEEK_VERBS)[number]>(
+    "uncovered"
+  );
   const report = useMemo(() => buildWeeklyReport(receipts), [receipts]);
+
+  useEffect(() => {
+    setWeekVerb(WEEK_VERBS[Math.floor(Math.random() * WEEK_VERBS.length)]);
+  }, []);
 
   return (
     <div className="flex flex-col gap-5">
@@ -24,7 +54,7 @@ export default function InsightsPage() {
         <div>
           <p className="text-sm font-medium text-ink-soft">Last 7 days</p>
           <h1 className="font-display text-2xl font-semibold text-ink">
-            Your week, snooped
+            Your week, {weekVerb}
           </h1>
         </div>
         <Mascot size={60} mood="wow" />
@@ -45,6 +75,9 @@ export default function InsightsPage() {
           >
             Snap a receipt →
           </Link>
+          <p className="mx-auto mt-3 max-w-[15rem] text-xs leading-snug text-ink-faint">
+            Sign in to keep this trail across devices.
+          </p>
         </div>
       ) : (
         <>
@@ -127,13 +160,6 @@ export default function InsightsPage() {
           )}
         </>
       )}
-
-      <button
-        onClick={reset}
-        className="mx-auto mt-2 text-xs font-medium text-ink-faint underline underline-offset-4"
-      >
-        Reset demo data
-      </button>
     </div>
   );
 }

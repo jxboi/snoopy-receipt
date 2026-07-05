@@ -168,42 +168,9 @@ export default function ProfilePage() {
           </section>
         </>
       ) : (
-        <>
-          <LocalModePanel />
-          <SignedOutCard receiptCount={receipts.length} />
-        </>
+        <SignedOutCard receiptCount={receipts.length} />
       )}
     </div>
-  );
-}
-
-function LocalModePanel() {
-  return (
-    <motion.section
-      initial={{ opacity: 0, y: 14 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.04 }}
-      className="rounded-3xl border border-black/5 bg-cream p-4"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-coral">
-            Local mode
-          </p>
-          <h2 className="mt-1 font-display text-base font-semibold text-ink">
-            Receipts stay here
-          </h2>
-          <p className="mt-1 text-sm leading-snug text-ink-soft text-balance">
-            Scan freely. A magic link or Google sign-in turns this into an
-            account when you are ready.
-          </p>
-        </div>
-        <span
-          className="mt-0.5 size-3 shrink-0 rounded-full"
-          style={{ background: "var(--color-tangerine)" }}
-        />
-      </div>
-    </motion.section>
   );
 }
 
@@ -260,7 +227,7 @@ function SignedOutCard({
 
       <Link
         href="/api/auth/google"
-        className="mt-4 flex items-center justify-center gap-2.5 rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-ink shadow-soft ring-1 ring-black/5 active:scale-[0.99] transition-transform"
+        className="mt-4 flex items-center justify-center gap-2.5 rounded-2xl bg-ink px-5 py-3 text-sm font-semibold text-white shadow-lift ring-1 ring-white/30 active:scale-[0.99] transition-transform"
       >
         <GoogleIcon />
         Continue with Google
@@ -303,7 +270,7 @@ function SignedOutCard({
         <button
           type="submit"
           disabled={status === "sending"}
-          className="rounded-2xl bg-coral px-5 py-3 text-sm font-semibold text-white shadow-lift active:scale-[0.99] transition-transform"
+          className="mt-1.5 rounded-2xl bg-coral px-5 py-3 text-sm font-semibold text-white shadow-lift active:scale-[0.99] transition-transform"
         >
           {status === "sending" ? "Sending..." : "Send magic link"}
         </button>
@@ -335,7 +302,7 @@ function SignedOutCard({
       ) : null}
 
       <p className="mt-4 text-center text-xs text-ink-faint">
-        Google or password-free email. Dev mode shows magic links here.
+        Your receipts stay on this device until you sign in.
       </p>
     </motion.section>
   );

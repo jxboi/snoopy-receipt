@@ -15,6 +15,7 @@ export default function ProfilePage() {
     currentUser,
     isSignedIn,
     syncState,
+    syncError,
     signIn,
     signOut,
     clearReceipts,
@@ -105,7 +106,7 @@ export default function ProfilePage() {
             </div>
           </motion.section>
 
-          <ModePanel isSignedIn syncState={syncState} />
+          <ModePanel isSignedIn syncState={syncState} syncError={syncError} />
 
           <section className="grid grid-cols-2 gap-3">
             <MiniStat
@@ -162,7 +163,7 @@ export default function ProfilePage() {
         </>
       ) : (
         <>
-          <ModePanel isSignedIn={false} syncState="local" />
+          <ModePanel isSignedIn={false} syncState="local" syncError={null} />
           <SignedOutCard receiptCount={receipts.length} />
         </>
       )}
@@ -173,9 +174,11 @@ export default function ProfilePage() {
 function ModePanel({
   isSignedIn,
   syncState,
+  syncError,
 }: {
   isSignedIn: boolean;
   syncState: "local" | "syncing" | "synced";
+  syncError: string | null;
 }) {
   const mode =
     !isSignedIn
@@ -220,6 +223,11 @@ function ModePanel({
           <p className="mt-1 text-sm leading-snug text-ink-soft text-balance">
             {mode.body}
           </p>
+          {isSignedIn && syncState === "local" && syncError ? (
+            <p className="mt-2 rounded-2xl bg-paper/70 px-3 py-2 text-xs font-medium text-coral-deep">
+              Sync check: {syncError}
+            </p>
+          ) : null}
         </div>
         <span
           className="mt-0.5 size-3 shrink-0 rounded-full"

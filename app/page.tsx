@@ -11,7 +11,7 @@ import { buildWeeklyReport } from "@/lib/insights";
 import { useStore } from "@/lib/store";
 
 export default function HomePage() {
-  const { receipts, lastAddedId, clearLastAdded } = useStore();
+  const { receipts, lastAddedId, clearLastAdded, toggleFavorite } = useStore();
   const report = useMemo(() => buildWeeklyReport(receipts), [receipts]);
 
   useEffect(() => {
@@ -147,6 +147,7 @@ export default function HomePage() {
                 receipt={r}
                 index={i}
                 fresh={r.id === lastAddedId}
+                onToggleFavorite={toggleFavorite}
               />
             ))}
           </div>

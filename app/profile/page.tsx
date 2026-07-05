@@ -278,11 +278,27 @@ function SignedOutCard({
           Save your receipt history
         </h2>
         <p className="mx-auto mt-1 max-w-[18rem] text-[13px] leading-snug text-ink-soft text-balance">
-          Claim the {receiptCount} receipts on this device with a magic link.
+          Claim the {receiptCount} receipts on this device with a quick sign in.
         </p>
       </div>
 
-      <form onSubmit={submit} className="mt-4 flex flex-col gap-2.5">
+      <Link
+        href="/api/auth/google"
+        className="mt-4 flex items-center justify-center gap-2.5 rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-ink shadow-soft ring-1 ring-black/5 active:scale-[0.99] transition-transform"
+      >
+        <GoogleIcon />
+        Continue with Google
+      </Link>
+
+      <div className="my-4 flex items-center gap-3">
+        <span className="h-px flex-1 bg-ink/10" />
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+          or
+        </span>
+        <span className="h-px flex-1 bg-ink/10" />
+      </div>
+
+      <form onSubmit={submit} className="flex flex-col gap-2.5">
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
             Name
@@ -343,9 +359,32 @@ function SignedOutCard({
       ) : null}
 
       <p className="mt-4 text-center text-xs text-ink-faint">
-        Password-free sign in. Dev mode shows the link here.
+        Google or password-free email. Dev mode shows magic links here.
       </p>
     </motion.section>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20">
+      <path
+        fill="#4285F4"
+        d="M19.6 10.23c0-.71-.06-1.23-.18-1.77H10v3.22h5.53c-.11.8-.71 2.01-2.04 2.82l-.02.11 2.96 2.24.2.02c1.84-1.66 2.97-4.1 2.97-6.64Z"
+      />
+      <path
+        fill="#34A853"
+        d="M10 19.8c2.63 0 4.84-.85 6.46-2.31l-3.08-2.38c-.82.56-1.93.95-3.38.95a5.86 5.86 0 0 1-5.54-3.96l-.12.01-3.08 2.32-.04.11A9.75 9.75 0 0 0 10 19.8Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M4.46 12.1A5.76 5.76 0 0 1 4.14 10c0-.73.12-1.43.31-2.1l-.01-.14-3.12-2.36-.1.05A9.63 9.63 0 0 0 .2 10c0 1.64.4 3.18 1.02 4.55l3.24-2.45Z"
+      />
+      <path
+        fill="#EA4335"
+        d="M10 3.94c1.83 0 3.06.77 3.76 1.42l2.75-2.62A9.42 9.42 0 0 0 10 .2a9.75 9.75 0 0 0-8.78 5.25l3.23 2.45A5.9 5.9 0 0 1 10 3.94Z"
+      />
+    </svg>
   );
 }
 

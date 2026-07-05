@@ -15,7 +15,7 @@ interface ReceiptGroup {
   receipts: Receipt[];
 }
 
-type SortMode = "uploaded" | "receipt";
+type SortMode = "uploaded" | "receipt" | "favorites";
 
 function dayKey(iso: string): string {
   return new Date(iso).toDateString();
@@ -27,6 +27,15 @@ function historyTimestamp(receipt: Receipt, sortMode: SortMode): string {
 }
 
 function sortReceipts(receipts: Receipt[], sortMode: SortMode): Receipt[] {
+  if (sortMode === "favorites") {
+    return [...receipts].sort(
+      (a, b) =>
+        Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) ||
+        new Date(historyTimestamp(b, "uploaded")).getTime() -
+          new Date(historyTimestamp(a, "uploaded")).getTime()
+    );
+  }
+
   return [...receipts].sort(
     (a, b) =>
       new Date(historyTimestamp(b, sortMode)).getTime() -
@@ -35,6 +44,19 @@ function sortReceipts(receipts: Receipt[], sortMode: SortMode): Receipt[] {
 }
 
 function groupByDay(receipts: Receipt[], sortMode: SortMode): ReceiptGroup[] {
+  if (sortMode === "favorites") {
+    const favorites = receipts.filter((receipt) => receipt.favorite);
+    const others = receipts.filter((receipt) => !receipt.favorite);
+    return [
+      favorites.length
+        ? { key: "favorites", label: "Favorites", receipts: favorites }
+        : null,
+      others.length
+        ? { key: "others", label: "Other receipts", receipts: others }
+        : null,
+    ].filter((group): group is ReceiptGroup => Boolean(group));
+  }
+
   const groups: ReceiptGroup[] = [];
 
   for (const receipt of receipts) {
@@ -57,7 +79,7 @@ function groupByDay(receipts: Receipt[], sortMode: SortMode): ReceiptGroup[] {
 }
 
 export default function HistoryPage() {
-  const { receipts } = useStore();
+  const { receipts, toggleFavorite } = useStore();
   const [sortMode, setSortMode] = useState<SortMode>("uploaded");
   const [sortOpen, setSortOpen] = useState(false);
   const sortedReceipts = useMemo(
@@ -153,6 +175,7 @@ export default function HistoryPage() {
                       key={receipt.id}
                       receipt={receipt}
                       index={Math.min(groupIndex + receiptIndex, 6)}
+                      onToggleFavorite={toggleFavorite}
                     />
                   ))}
                 </div>
@@ -195,7 +218,11 @@ function SortMenu({
       <button
         type="button"
         aria-label={`Sort receipts by ${
-          sortMode === "uploaded" ? "uploaded date" : "receipt date"
+          sortMode === "uploaded"
+            ? "uploaded date"
+            : sortMode === "receipt"
+              ? "receipt date"
+              : "favorites"
         }`}
         aria-expanded={open}
         onClick={onToggle}
@@ -219,6 +246,11 @@ function SortMenu({
             active={sortMode === "receipt"}
             label="Receipt date"
             onClick={() => onChange("receipt")}
+          />
+          <SortOption
+            active={sortMode === "favorites"}
+            label="Favorites first"
+            onClick={() => onChange("favorites")}
           />
         </motion.div>
       ) : null}

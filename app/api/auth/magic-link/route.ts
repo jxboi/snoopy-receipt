@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { appOrigin } from "@/lib/appOrigin";
 import { createMagicLinkToken } from "@/lib/magicLink";
 
 interface MagicLinkRequest {
@@ -8,14 +9,6 @@ interface MagicLinkRequest {
 
 function validEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
-function appOrigin(request: Request): string {
-  const configured = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL;
-  if (configured) {
-    return configured.startsWith("http") ? configured : `https://${configured}`;
-  }
-  return new URL(request.url).origin;
 }
 
 function emailHtml(link: string, name: string): string {

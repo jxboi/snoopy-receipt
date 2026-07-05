@@ -178,13 +178,17 @@ function ModePanel({
   syncState: "local" | "syncing" | "synced";
 }) {
   const mode =
-    !isSignedIn || syncState === "local"
+    !isSignedIn
       ? {
           label: "Local mode",
-          title: isSignedIn ? "Device-only for now" : "Receipts stay here",
-          body: isSignedIn
-            ? "You are signed in, but cloud storage is not reachable yet. New receipts still save on this device."
-            : "Scan freely. A magic link turns this into an account when you are ready.",
+          title: "Receipts stay here",
+          body: "Scan freely. A magic link or Google sign-in turns this into an account when you are ready.",
+        }
+      : syncState === "local"
+        ? {
+            label: "Signed in",
+            title: "Device-only for now",
+            body: "Your account is active, but cloud storage is not reachable yet. New receipts still save on this device.",
         }
       : syncState === "syncing"
         ? {

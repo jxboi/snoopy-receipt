@@ -18,7 +18,7 @@ function HomeIcon({ active }: { active: boolean }) {
   );
 }
 
-function ReportIcon({ active }: { active: boolean }) {
+function InsightsIcon({ active }: { active: boolean }) {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
       <path
@@ -26,6 +26,40 @@ function ReportIcon({ active }: { active: boolean }) {
         stroke="currentColor"
         strokeWidth={active ? 2.6 : 2.1}
         strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function HistoryIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M7 4.8h10A1.8 1.8 0 0 1 18.8 6.6v11.2L16.5 16l-2.2 1.8L12 16l-2.3 1.8L7.5 16l-2.3 1.8V6.6A1.8 1.8 0 0 1 7 4.8Z"
+        stroke="currentColor"
+        strokeWidth={active ? 2.4 : 2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8.8 8.6h6.4M8.8 11.4h5M8.8 14.2h3.7"
+        stroke="currentColor"
+        strokeWidth={active ? 2.4 : 2}
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ProfileIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M12 12a3.8 3.8 0 1 0 0-7.6 3.8 3.8 0 0 0 0 7.6ZM5.2 20a6.8 6.8 0 0 1 13.6 0"
+        stroke="currentColor"
+        strokeWidth={active ? 2.5 : 2.1}
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
@@ -48,12 +82,14 @@ function CameraIcon() {
 export function BottomNav() {
   const path = usePathname();
   const isHome = path === "/";
-  const isReport = path.startsWith("/report");
+  const isInsights = path.startsWith("/insights") || path.startsWith("/report");
+  const isHistory = path.startsWith("/history");
+  const isProfile = path.startsWith("/profile");
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40">
       <div className="mx-auto max-w-[480px] px-5 pb-safe pt-2">
-        <div className="pointer-events-auto relative flex h-[62px] items-center justify-between rounded-[26px] border border-black/5 bg-paper/90 px-9 shadow-lift backdrop-blur-xl">
+        <div className="pointer-events-auto relative grid h-[62px] grid-cols-[1fr_1fr_72px_1fr_1fr] items-center rounded-[26px] border border-black/5 bg-paper/90 px-4 shadow-lift backdrop-blur-xl">
           <Link
             href="/"
             aria-label="Home"
@@ -62,6 +98,16 @@ export function BottomNav() {
           >
             <HomeIcon active={isHome} />
             <span className="text-[10px] font-semibold">Home</span>
+          </Link>
+
+          <Link
+            href="/insights"
+            aria-label="Weekly insights"
+            className="flex flex-col items-center gap-0.5 transition-colors"
+            style={{ color: isInsights ? "var(--color-coral)" : "var(--color-ink-faint)" }}
+          >
+            <InsightsIcon active={isInsights} />
+            <span className="text-[10px] font-semibold">Insights</span>
           </Link>
 
           {/* raised scan FAB */}
@@ -81,13 +127,23 @@ export function BottomNav() {
           </Link>
 
           <Link
-            href="/report"
-            aria-label="Weekly report"
-            className="flex flex-col items-center gap-0.5 transition-colors"
-            style={{ color: isReport ? "var(--color-coral)" : "var(--color-ink-faint)" }}
+            href="/history"
+            aria-label="Receipt history"
+            className="col-start-4 flex flex-col items-center gap-0.5 transition-colors"
+            style={{ color: isHistory ? "var(--color-coral)" : "var(--color-ink-faint)" }}
           >
-            <ReportIcon active={isReport} />
-            <span className="text-[10px] font-semibold">Report</span>
+            <HistoryIcon active={isHistory} />
+            <span className="text-[10px] font-semibold">History</span>
+          </Link>
+
+          <Link
+            href="/profile"
+            aria-label="Profile"
+            className="col-start-5 flex flex-col items-center gap-0.5 transition-colors"
+            style={{ color: isProfile ? "var(--color-coral)" : "var(--color-ink-faint)" }}
+          >
+            <ProfileIcon active={isProfile} />
+            <span className="text-[10px] font-semibold">Profile</span>
           </Link>
         </div>
       </div>

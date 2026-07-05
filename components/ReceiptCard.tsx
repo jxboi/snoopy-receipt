@@ -73,6 +73,26 @@ export function ReceiptCard({
             transition={{ duration: 0.28, ease: "easeInOut" }}
           >
             <div className="px-3.5 pb-3.5">
+              {receipt.imageUrl ? (
+                <div className="mb-2.5 overflow-hidden rounded-2xl bg-cream">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={receipt.imageUrl}
+                    alt={`${receipt.merchant} receipt`}
+                    className="max-h-56 w-full object-cover"
+                  />
+                  <div className="flex items-center justify-between px-3 py-2 text-[11px] text-ink-faint">
+                    <span>Receipt photo</span>
+                    {receipt.imageStoredAt ? (
+                      <span>
+                        saved{" "}
+                        {relativeDay(receipt.imageStoredAt).toLowerCase()}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
               <div
                 className="rounded-2xl px-3.5 py-2"
                 style={{ background: meta.soft }}

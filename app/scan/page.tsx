@@ -16,6 +16,14 @@ import { useStore } from "@/lib/store";
 import type { Receipt } from "@/lib/types";
 
 type Phase = "idle" | "sniffing" | "reveal";
+type ReceiptImageAttachment = Pick<
+  Receipt,
+  "imageUrl" | "imagePath" | "imageStoredAt"
+>;
+interface PreparedReceiptImage {
+  blob: Blob;
+  fallback: ReceiptImageAttachment;
+}
 
 const SNIFF_LINES = [
   "Focusing the magnifying glass…",
@@ -25,6 +33,93 @@ const SNIFF_LINES = [
   "Ooh — found something…",
 ];
 
+const RECEIPT_IMAGE_MAX_EDGE = 900;
+
+function safeImageName(file: File): string {
+  const fallback = "receipt.jpg";
+  const name = file.name.trim() || fallback;
+  return name.replace(/[^a-z0-9._-]+/gi, "-").replace(/^-+|-+$/g, "") || fallback;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function prepareReceiptImage(file: File): Promise<PreparedReceiptImage | null> {
+  if (!file.type.startsWith("image/")) return null;
+
+  try {
+    const original = await readFileAsDataUrl(file);
+    const img = await loadImage(original);
+    const scale = Math.min(
+      1,
+      RECEIPT_IMAGE_MAX_EDGE / Math.max(img.naturalWidth, img.naturalHeight)
+    );
+    const width = Math.max(1, Math.round(img.naturalWidth * scale));
+    const height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext("2d")?.drawImage(img, 0, 0, width, height);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.72)
+    );
+    if (!blob) throw new Error("toBlob returned null");
+
+    return {
+      blob,
+      fallback: {
+        imageUrl: await blobToDataUrl(blob),
+        imagePath: `local-receipts/${Date.now().toString(36)}-${safeImageName(
+          file
+        )}`,
+        imageStoredAt: new Date().toISOString(),
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function uploadReceiptImage(
+  prepared: PreparedReceiptImage,
+  receiptId: string
+): Promise<ReceiptImageAttachment> {
+  const body = new FormData();
+  body.append("image", prepared.blob, "receipt.jpg");
+  body.append("receiptId", receiptId);
+
+  const res = await fetch("/api/receipt-image", {
+    method: "POST",
+    body,
+  });
+  if (!res.ok) throw new Error(`image upload failed (${res.status})`);
+  return (await res.json()) as ReceiptImageAttachment;
+}
+
 export default function ScanPage() {
   const router = useRouter();
   const { receipts, nextScan, saveReceipt } = useStore();
@@ -32,19 +127,24 @@ export default function ScanPage() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [scanned, setScanned] = useState<Receipt | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
+  const [imageAttachment, setImageAttachment] =
+    useState<ReceiptImageAttachment | null>(null);
+  const [autoSavedId, setAutoSavedId] = useState<string | null>(null);
   const [line, setLine] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   // bumped on every scan/reset so a slow parse can't reveal after the user moves on
   const scanRun = useRef(0);
 
-  const insights = useMemo(
-    () => (scanned ? revealInsights(scanned, [scanned, ...receipts]) : []),
-    [scanned, receipts]
-  );
+  const insights = useMemo(() => {
+    if (!scanned) return [];
+    const history = receipts.some((receipt) => receipt.id === scanned.id)
+      ? receipts
+      : [scanned, ...receipts];
+    return revealInsights(scanned, history);
+  }, [scanned, receipts]);
 
-  // Compare against what's already saved (receipts excludes the just-scanned
-  // one, since it isn't persisted until "Save"). Warns, never blocks.
+  // Compare against what's already saved. Warns, never blocks.
   const duplicate = useMemo(
     () => (scanned ? findDuplicate(scanned, receipts) : null),
     [scanned, receipts]
@@ -75,6 +175,8 @@ export default function ScanPage() {
     const run = ++scanRun.current;
     setPhoto(withPhoto);
     setScanned(null);
+    setImageAttachment(null);
+    setAutoSavedId(null);
     setPhase("sniffing");
 
     // A real photo goes to Claude Vision (/api/scan); anything else — the
@@ -86,10 +188,30 @@ export default function ScanPage() {
     const parse: Promise<Receipt> = file
       ? parseReceipt(file).catch(() => nextScan()) // graceful fallback to mock
       : Promise.resolve(nextScan());
+    const imageReady: Promise<PreparedReceiptImage | null> = file
+      ? prepareReceiptImage(file)
+      : Promise.resolve(null);
 
-    Promise.all([parse, minBeat]).then(([r]) => {
+    Promise.all([parse, imageReady, minBeat]).then(async ([r, image]) => {
       if (scanRun.current !== run) return; // superseded by a reset/new scan
+      const attachment = image
+        ? await uploadReceiptImage(image, r.id).catch(() => image.fallback)
+        : null;
+      if (scanRun.current !== run) return; // upload may have been superseded too
+      if (file) {
+        const history = receipts.some((receipt) => receipt.id === r.id)
+          ? receipts
+          : [r, ...receipts];
+        const nugget = revealInsights(r, history)[0]?.title;
+        saveReceipt({
+          ...r,
+          ...(nugget ? { nugget } : {}),
+          ...(attachment ?? {}),
+        });
+        setAutoSavedId(r.id);
+      }
       setScanned(r);
+      setImageAttachment(attachment);
       setPhase("reveal");
     });
   }
@@ -104,9 +226,13 @@ export default function ScanPage() {
     if (scanned) {
       // carry the top find onto the feed card so it stays lively
       const nugget = insights[0]?.title;
-      saveReceipt(nugget ? { ...scanned, nugget } : scanned);
+      saveReceipt({
+        ...scanned,
+        ...(nugget ? { nugget } : {}),
+        ...(imageAttachment ?? {}),
+      });
     }
-    router.push("/");
+    router.push("/history");
   }
 
   function reset() {
@@ -114,10 +240,13 @@ export default function ScanPage() {
     if (photo) URL.revokeObjectURL(photo);
     setPhoto(null);
     setScanned(null);
+    setImageAttachment(null);
+    setAutoSavedId(null);
     setPhase("idle");
   }
 
   const meta = scanned ? categoryMeta(scanned.category) : null;
+  const isAutoSaved = Boolean(scanned && autoSavedId === scanned.id);
 
   return (
     <div className="flex min-h-[80dvh] flex-col">
@@ -177,7 +306,7 @@ export default function ScanPage() {
             </button>
 
             <p className="mt-4 text-center text-xs text-ink-faint">
-              This is a demo — photos stay on your device.
+              Prototype mode - receipt photos are compressed before any upload.
             </p>
           </motion.div>
         )}
@@ -251,6 +380,17 @@ export default function ScanPage() {
               >
                 {/* parsed summary */}
                 <div className="p-5">
+                  {photo ? (
+                    <div className="mb-4 overflow-hidden rounded-3xl bg-cream">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={photo}
+                        alt="Scanned receipt preview"
+                        className="max-h-56 w-full object-cover"
+                      />
+                    </div>
+                  ) : null}
+
                   <div className="flex items-center gap-3">
                     <div
                       className="grid size-12 place-items-center rounded-2xl text-2xl"
@@ -357,14 +497,18 @@ export default function ScanPage() {
                 Snoop another
               </button>
               <button
-                onClick={save}
+                onClick={isAutoSaved ? () => router.push("/history") : save}
                 className="flex-[1.4] rounded-2xl py-3.5 text-sm font-semibold text-white shadow-lift active:scale-[0.98] transition-transform"
                 style={{
                   background:
                     "linear-gradient(150deg, var(--color-tangerine), var(--color-coral) 55%, var(--color-coral-deep))",
                 }}
               >
-                {duplicate ? "Save anyway" : "Save to my finds"}
+                {isAutoSaved
+                  ? "View History"
+                  : duplicate
+                    ? "Save anyway"
+                    : "Save to History"}
               </button>
             </motion.div>
           </motion.div>

@@ -4,6 +4,8 @@ import type {
   CategoryId,
   CategorySlice,
   Insight,
+  InsightTone,
+  LineItem,
   Receipt,
   WeeklyReport,
 } from "./types";
@@ -43,6 +45,17 @@ function normalizeName(name: string): string {
   return name.toLowerCase().replace(/\s*\(.*?\)\s*/g, "").trim();
 }
 
+function normalizeMerchant(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\s*\(.*?\)\s*/g, " ")
+    .replace(/#[\w-]+/g, " ")
+    .replace(/\b(unit|store|outlet|branch)\s+[\w-]+/g, " ")
+    .replace(/[^a-z0-9&]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /* ---------------------------------------------------------------- *
  * Reveal insights — the reward for a single upload.
  * `all` includes the just-added receipt. Always returns >= 1.
@@ -51,12 +64,15 @@ function normalizeName(name: string): string {
 export function revealInsights(receipt: Receipt, all: Receipt[]): Insight[] {
   const nowDate = new Date(new Date(receipt.date).getTime());
 
-  // Two sources feed the reveal:
+  // Three sources feed the reveal:
   //  · observations — Claude's content-aware read on THIS receipt's items,
   //    generated during the vision parse (empty for mock/sample scans).
+  //  · curiosities — local "you probably didn't know this" facts and tips
+  //    sparked by the merchant, items, price, timing, or category.
   //  · patterns — what this receipt says about YOU, spotted across history
   //    (Claude never sees your other receipts, so only we can find these).
   const observations = receipt.observations ?? [];
+  const curiosities = curiosityInsights(receipt, all, nowDate);
   const patterns = patternInsights(receipt, all, nowDate);
 
   const out: Insight[] = [];
@@ -69,13 +85,16 @@ export function revealInsights(receipt: Receipt, all: Receipt[]): Insight[] {
     out.push(i);
   };
 
-  // Interleave so both "what's in it" and "what it says about you" show up,
-  // leading with the richest content-aware find.
+  // Interleave so the reveal has a concrete read, a fresh curiosity, and a
+  // personal pattern instead of four versions of the same thought.
   push(observations[0]);
+  push(curiosities[0]);
   push(patterns[0]);
   push(observations[1]);
+  push(curiosities[1]);
   push(patterns[1]);
   push(observations[2]);
+  push(curiosities[2]);
   push(patterns[2]);
 
   // Guaranteed delight — even a bottle of water earns something (mock/sample
@@ -84,6 +103,502 @@ export function revealInsights(receipt: Receipt, all: Receipt[]): Insight[] {
   if (out.length < 1) push(cheer(receipt));
 
   return out.slice(0, 4);
+}
+
+/* ---------------------------------------------------------------- *
+ * Curiosity engine — useful or surprising facts sparked by a receipt.
+ * These are intentionally local and deterministic. Public, time-sensitive
+ * claims (rich lists, current rankings, ownership changes) belong in a later
+ * sourced server-side enrichment step, not in this offline rule set.
+ * ---------------------------------------------------------------- */
+
+type CuriosityAngle =
+  | "merchant-backstory"
+  | "item-origin"
+  | "item-science"
+  | "item-useful"
+  | "price-context"
+  | "routine-change"
+  | "keep-close";
+
+type Curiosity = Insight & { angle: CuriosityAngle };
+
+interface CuriosityContext {
+  merchantKey: string;
+  sameMerchant: Receipt[];
+  previousSameMerchant: Receipt[];
+}
+
+interface StaticCuriosityRule {
+  id: string;
+  angle: CuriosityAngle;
+  tone: InsightTone;
+  emoji: string;
+  match: RegExp;
+  title: string;
+  body: string;
+}
+
+const MERCHANT_CURIOSITIES: StaticCuriosityRule[] = [
+  {
+    id: "starbucks-name",
+    angle: "merchant-backstory",
+    tone: "funfact",
+    emoji: "📚",
+    match: /\bstarbucks?\b/i,
+    title: "Starbucks is a literary name drop",
+    body: "The name was borrowed from Starbuck, the first mate in Moby-Dick.",
+  },
+  {
+    id: "trader-joes-start",
+    angle: "merchant-backstory",
+    tone: "funfact",
+    emoji: "🛒",
+    match: /\btrader joe'?s\b/i,
+    title: "Trader Joe's started in Pasadena",
+    body: "The first store opened in 1967, long before the snack-aisle cult following.",
+  },
+  {
+    id: "seven-eleven-hours",
+    angle: "merchant-backstory",
+    tone: "funfact",
+    emoji: "🕚",
+    match: /\b7\s*-?\s*eleven\b/i,
+    title: "7-Eleven was named for its hours",
+    body: "The name came from its once-novel 7am-to-11pm schedule.",
+  },
+  {
+    id: "cvs-name",
+    angle: "merchant-backstory",
+    tone: "funfact",
+    emoji: "🏪",
+    match: /\bcvs\b/i,
+    title: "CVS has a very literal origin",
+    body: "The letters originally stood for Consumer Value Stores.",
+  },
+  {
+    id: "chipotle-name",
+    angle: "merchant-backstory",
+    tone: "funfact",
+    emoji: "🌶️",
+    match: /\bchipotle\b/i,
+    title: "Chipotle means smoked jalapeno",
+    body: "The restaurant name is also the ingredient: a ripe jalapeno, smoke-dried.",
+  },
+  {
+    id: "shake-shack-cart",
+    angle: "merchant-backstory",
+    tone: "funfact",
+    emoji: "🍔",
+    match: /\bshake shack\b/i,
+    title: "Shake Shack began as a cart",
+    body: "Before the chain, it was a hot-dog cart in Madison Square Park.",
+  },
+  {
+    id: "shell-name",
+    angle: "merchant-backstory",
+    tone: "funfact",
+    emoji: "⛽",
+    match: /\bshell\b/i,
+    title: "Shell's name is exactly that",
+    body: "The brand traces back to a family business that imported decorative seashells.",
+  },
+  {
+    id: "target-bullseye",
+    angle: "merchant-backstory",
+    tone: "funfact",
+    emoji: "🎯",
+    match: /\btarget\b/i,
+    title: "That bullseye has range",
+    body: "Target has used a bullseye-style mark since the 1960s.",
+  },
+];
+
+const ITEM_CURIOSITIES: StaticCuriosityRule[] = [
+  {
+    id: "espresso-pressure",
+    angle: "item-science",
+    tone: "funfact",
+    emoji: "☕",
+    match: /\bespresso|latte|cappuccino|americano|mocha\b/i,
+    title: "Espresso is about pressure, not beans",
+    body: "The same coffee can taste totally different when hot water is pushed through it fast.",
+  },
+  {
+    id: "cold-brew-extraction",
+    angle: "item-science",
+    tone: "funfact",
+    emoji: "🧊",
+    match: /\bcold ?brew\b/i,
+    title: "Cold brew is slow-motion coffee",
+    body: "It leans on time instead of heat, which is why it often tastes smoother.",
+  },
+  {
+    id: "oat-milk-enzymes",
+    angle: "item-science",
+    tone: "funfact",
+    emoji: "🥛",
+    match: /\boat.?milk\b/i,
+    title: "Oat milk has a tiny science trick",
+    body: "Enzymes break oat starches into smaller sugars, which helps it taste naturally sweet.",
+  },
+  {
+    id: "croissant-kipferl",
+    angle: "item-origin",
+    tone: "funfact",
+    emoji: "🥐",
+    match: /\bcroissant\b/i,
+    title: "Croissants have Austrian ancestry",
+    body: "The French icon is usually traced back to the crescent-shaped kipferl.",
+  },
+  {
+    id: "banana-berry",
+    angle: "item-science",
+    tone: "funfact",
+    emoji: "🍌",
+    match: /\bbanana\b/i,
+    title: "Botanically, banana is a berry",
+    body: "A very familiar fruit with a surprisingly technical classification.",
+  },
+  {
+    id: "avocado-ripen",
+    angle: "item-useful",
+    tone: "category",
+    emoji: "🥑",
+    match: /\bavocado|guac(amole)?\b/i,
+    title: "Avocados listen to bananas",
+    body: "Store them together and ethylene from the banana can speed up ripening.",
+  },
+  {
+    id: "chocolate-percent",
+    angle: "item-science",
+    tone: "funfact",
+    emoji: "🍫",
+    match: /\bdark chocolate|chocolate\b/i,
+    title: "Chocolate percentages are a blend",
+    body: "That number includes cocoa solids plus cocoa butter, not just the bitter bits.",
+  },
+  {
+    id: "sparkling-water-tang",
+    angle: "item-science",
+    tone: "funfact",
+    emoji: "🫧",
+    match: /\bsparkling water|seltzer|soda water\b/i,
+    title: "Sparkling water has a built-in tang",
+    body: "Dissolved carbon dioxide forms a little carbonic acid, which gives the zip.",
+  },
+  {
+    id: "hummus-name",
+    angle: "item-origin",
+    tone: "funfact",
+    emoji: "🫘",
+    match: /\bhummus\b/i,
+    title: "Hummus is named after chickpeas",
+    body: "In Arabic, hummus simply means chickpeas. Very direct, very delicious.",
+  },
+  {
+    id: "pita-pocket",
+    angle: "item-science",
+    tone: "funfact",
+    emoji: "🫓",
+    match: /\bpita\b/i,
+    title: "Pita pockets are steam engineering",
+    body: "A hot oven turns moisture into steam, puffing the bread open from the inside.",
+  },
+  {
+    id: "maillard",
+    angle: "item-science",
+    tone: "funfact",
+    emoji: "🔥",
+    match: /\bburger|steak|beef|chicken|fries|toast\b/i,
+    title: "The tasty brown bits have a name",
+    body: "That deep cooked flavor is the Maillard reaction doing its thing.",
+  },
+  {
+    id: "rice-staple",
+    angle: "item-origin",
+    tone: "funfact",
+    emoji: "🍚",
+    match: /\brice\b/i,
+    title: "Rice is a tiny global heavyweight",
+    body: "It is a daily staple for billions of people, which makes this little line item part of a huge story.",
+  },
+  {
+    id: "ramen-kansui",
+    angle: "item-science",
+    tone: "funfact",
+    emoji: "🍜",
+    match: /\bramen|noodle\b/i,
+    title: "Ramen's bounce comes from chemistry",
+    body: "Alkaline salts help give those noodles their springy chew.",
+  },
+  {
+    id: "sunscreen-scale",
+    angle: "item-useful",
+    tone: "category",
+    emoji: "☀️",
+    match: /\bsunscreen|spf\b/i,
+    title: "SPF math is not linear",
+    body: "SPF 50 is not twice SPF 25; the bigger win is applying enough and reapplying.",
+  },
+  {
+    id: "vitamin-d-fat",
+    angle: "item-useful",
+    tone: "category",
+    emoji: "💊",
+    match: /\bvitamin d\b/i,
+    title: "Vitamin D is fat-soluble",
+    body: "Many people take it with food because it plays nicer with a little fat around.",
+  },
+  {
+    id: "candle-memory",
+    angle: "item-useful",
+    tone: "category",
+    emoji: "🕯️",
+    match: /\bcandle\b/i,
+    title: "Candles have a first-burn memory",
+    body: "Letting the top melt evenly the first time helps avoid that tunnel down the middle.",
+  },
+  {
+    id: "wool-warm",
+    angle: "item-useful",
+    tone: "category",
+    emoji: "🧦",
+    match: /\bwool|sock\b/i,
+    title: "Wool is sneaky practical",
+    body: "Its crimped fibers trap air, which is why it can feel warm without much bulk.",
+  },
+  {
+    id: "fuel-log",
+    angle: "item-useful",
+    tone: "category",
+    emoji: "⛽",
+    match: /\bfuel|petrol|gas|unleaded\b/i,
+    title: "Fuel receipts are tiny travel logs",
+    body: "The timestamp and station can be useful later for mileage, reimbursements, or trip notes.",
+  },
+  {
+    id: "bottled-water-expense",
+    angle: "item-useful",
+    tone: "category",
+    emoji: "💧",
+    match: /\bbottled water|water\b/i,
+    title: "Even water can be context",
+    body: "On a travel day, a tiny water receipt can still anchor where and when you were.",
+  },
+];
+
+function curiosityInsights(
+  receipt: Receipt,
+  all: Receipt[],
+  now: Date
+): Insight[] {
+  const merchantKey = normalizeMerchant(receipt.merchant);
+  const sameMerchant = all.filter(
+    (r) => normalizeMerchant(r.merchant) === merchantKey && withinDays(r.date, 60, now)
+  );
+  const previousSameMerchant = sameMerchant.filter((r) => r.id !== receipt.id);
+  const itemText = receipt.items.map((it) => it.name).join(" ");
+  const ctx: CuriosityContext = {
+    merchantKey,
+    sameMerchant,
+    previousSameMerchant,
+  };
+
+  const candidates: Curiosity[] = [];
+  for (const rule of MERCHANT_CURIOSITIES) {
+    if (rule.match.test(receipt.merchant)) candidates.push(fromRule(rule, receipt));
+  }
+  for (const rule of ITEM_CURIOSITIES) {
+    if (rule.match.test(itemText)) candidates.push(fromRule(rule, receipt));
+  }
+  candidates.push(...comparisonCuriosities(receipt, ctx));
+  candidates.push(...categoryCuriosities(receipt, ctx));
+
+  return rotateCuriosities(receipt, candidates, ctx).map(stripAngle).slice(0, 3);
+}
+
+function fromRule(rule: StaticCuriosityRule, receipt: Receipt): Curiosity {
+  return {
+    id: `curio-${rule.id}-${receipt.id}`,
+    angle: rule.angle,
+    tone: rule.tone,
+    emoji: rule.emoji,
+    title: rule.title,
+    body: rule.body,
+  };
+}
+
+function stripAngle({ angle: _angle, ...insight }: Curiosity): Insight {
+  return insight;
+}
+
+function itemLabel(item: LineItem | undefined): string {
+  return item?.name ?? "That item";
+}
+
+function firstItem(receipt: Receipt, match: RegExp): LineItem | undefined {
+  return receipt.items.find((item) => match.test(item.name));
+}
+
+function averageTotal(receipts: Receipt[]): number {
+  if (!receipts.length) return 0;
+  return receipts.reduce((sum, r) => sum + r.total, 0) / receipts.length;
+}
+
+function comparisonCuriosities(
+  receipt: Receipt,
+  ctx: CuriosityContext
+): Curiosity[] {
+  const out: Curiosity[] = [];
+  const previous = ctx.previousSameMerchant;
+  if (!previous.length) return out;
+
+  const avg = averageTotal(previous);
+  if (avg > 0 && receipt.total >= avg * 1.25) {
+    out.push({
+      id: `curio-bigger-stop-${receipt.id}`,
+      angle: "price-context",
+      tone: "pattern",
+      emoji: "📈",
+      title: `A bigger-than-usual ${receipt.merchant} stop`,
+      body: `This one is ${money(receipt.total)}; your earlier visits averaged about ${money(avg)}.`,
+    });
+  } else if (avg > 0 && receipt.total <= avg * 0.75) {
+    out.push({
+      id: `curio-lighter-stop-${receipt.id}`,
+      angle: "price-context",
+      tone: "pattern",
+      emoji: "🪶",
+      title: `A lighter ${receipt.merchant} run`,
+      body: `This one came in below your usual ${money(avg)}-ish visit.`,
+    });
+  }
+
+  const previousItemKeys = new Set(
+    previous.flatMap((r) => r.items.map((item) => normalizeName(item.name)))
+  );
+  const newItem = receipt.items.find(
+    (item) => !previousItemKeys.has(normalizeName(item.name))
+  );
+  if (newItem && receipt.items.length > 1) {
+    out.push({
+      id: `curio-new-order-${receipt.id}`,
+      angle: "routine-change",
+      tone: "pattern",
+      emoji: newItem.emoji && newItem.emoji !== "•" ? newItem.emoji : "✨",
+      title: `New character: ${newItem.name}`,
+      body: `Same spot, but this line item has not shown up in your saved ${receipt.merchant} receipts before.`,
+    });
+  }
+
+  const lastVisit = previous
+    .map((r) => new Date(r.date).getTime())
+    .filter((time) => !Number.isNaN(time))
+    .sort((a, b) => b - a)[0];
+  const nowTime = new Date(receipt.date).getTime();
+  const daysSince = lastVisit
+    ? Math.max(1, Math.round((nowTime - lastVisit) / (24 * 60 * 60 * 1000)))
+    : 0;
+  if (daysSince >= 10) {
+    out.push({
+      id: `curio-return-gap-${receipt.id}`,
+      angle: "routine-change",
+      tone: "pattern",
+      emoji: "↩️",
+      title: `Back after ${daysSince} days`,
+      body: `${receipt.merchant} took a little break from your receipt stack.`,
+    });
+  }
+
+  return out;
+}
+
+function categoryCuriosities(
+  receipt: Receipt,
+  ctx: CuriosityContext
+): Curiosity[] {
+  const out: Curiosity[] = [];
+  const top = receipt.items.length ? priciest(receipt) : undefined;
+  const date = new Date(receipt.date);
+  const hour = Number.isNaN(date.getTime()) ? 12 : date.getHours();
+
+  if (
+    (receipt.category === "shopping" || receipt.category === "health") &&
+    top &&
+    top.price >= 10
+  ) {
+    out.push({
+      id: `curio-keep-close-${receipt.id}`,
+      angle: "keep-close",
+      tone: "category",
+      emoji: "📌",
+      title: `${itemLabel(top)} might be worth keeping close`,
+      body: "Return windows, warranty questions, and product recalls all love a good timestamp.",
+    });
+  }
+
+  if (receipt.category === "grocery" && receipt.items.length >= 5) {
+    const produceCount = receipt.items.filter((item) =>
+      /banana|apple|avocado|tomato|greens|kale|spinach|salad/i.test(item.name)
+    ).length;
+    if (produceCount >= 2) {
+      out.push({
+        id: `curio-produce-mix-${receipt.id}`,
+        angle: "item-useful",
+        tone: "category",
+        emoji: "🌈",
+        title: "Nice little produce spread",
+        body: `${produceCount} fresh-looking lines in one basket. That's a tiny fridge reset.`,
+      });
+    }
+  }
+
+  if (receipt.category === "dining" && hour >= 21) {
+    out.push({
+      id: `curio-late-dining-${receipt.id}`,
+      angle: "routine-change",
+      tone: "pattern",
+      emoji: "🌙",
+      title: "Late receipt, different story",
+      body: "After-hours food receipts often say more about the day than the meal.",
+    });
+  }
+
+  const coffeeItem = firstItem(receipt, /coffee|latte|espresso|cappuccino|americano/i);
+  if (receipt.category === "coffee" && coffeeItem && ctx.sameMerchant.length >= 2) {
+    out.push({
+      id: `curio-coffee-ritual-${receipt.id}`,
+      angle: "routine-change",
+      tone: "pattern",
+      emoji: coffeeItem.emoji && coffeeItem.emoji !== "•" ? coffeeItem.emoji : "☕",
+      title: `${receipt.merchant} is becoming a coffee landmark`,
+      body: "Not just caffeine. Repeated tiny places become part of your map.",
+    });
+  }
+
+  return out;
+}
+
+function rotateCuriosities(
+  receipt: Receipt,
+  candidates: Curiosity[],
+  ctx: CuriosityContext
+): Curiosity[] {
+  const unique: Curiosity[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const key = `${candidate.angle}:${candidate.title.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(candidate);
+  }
+  if (unique.length <= 1) return unique;
+
+  const start =
+    (hash(`${ctx.merchantKey}:${receipt.category}`) + ctx.sameMerchant.length) %
+    unique.length;
+  return [...unique.slice(start), ...unique.slice(0, start)];
 }
 
 /**

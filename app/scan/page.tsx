@@ -16,6 +16,7 @@ import { useStore } from "@/lib/store";
 import type { Receipt } from "@/lib/types";
 
 type Phase = "idle" | "sniffing" | "reveal";
+type PhotoSource = "camera" | "photos";
 type ReceiptImageAttachment = Pick<
   Receipt,
   "imageUrl" | "imagePath" | "imageStoredAt"
@@ -93,6 +94,7 @@ const SNIFF_LINES = [
 ];
 
 const RECEIPT_IMAGE_MAX_EDGE = 900;
+const CLOUD_SCAN_CONSENT_KEY = "snoopy.cloudScanConsent.v1";
 
 function safeImageName(file: File): string {
   const fallback = "receipt.jpg";
@@ -189,6 +191,9 @@ export default function ScanPage() {
   const [imageAttachment, setImageAttachment] =
     useState<ReceiptImageAttachment | null>(null);
   const [autoSavedId, setAutoSavedId] = useState<string | null>(null);
+  const [cloudScanConsent, setCloudScanConsent] = useState(false);
+  const [pendingPhotoSource, setPendingPhotoSource] =
+    useState<PhotoSource | null>(null);
   const [line, setLine] = useState(0);
   const cameraRef = useRef<HTMLInputElement>(null);
   const photosRef = useRef<HTMLInputElement>(null);
@@ -209,6 +214,14 @@ export default function ScanPage() {
     () => (scanned ? findDuplicate(scanned, receipts) : null),
     [scanned, receipts]
   );
+
+  useEffect(() => {
+    try {
+      setCloudScanConsent(localStorage.getItem(CLOUD_SCAN_CONSENT_KEY) === "yes");
+    } catch {
+      setCloudScanConsent(false);
+    }
+  }, []);
 
   // clear any pending timers only when the page unmounts — NOT on every photo
   // change, or we'd cancel the reveal timer that startScan just scheduled.
@@ -231,6 +244,31 @@ export default function ScanPage() {
     return () => clearInterval(id);
   }, [phase]);
 
+  function pickReceiptPhoto(source: PhotoSource) {
+    if (!cloudScanConsent) {
+      setPendingPhotoSource(source);
+      return;
+    }
+    (source === "camera" ? cameraRef : photosRef).current?.click();
+  }
+
+  function allowCloudScan() {
+    try {
+      localStorage.setItem(CLOUD_SCAN_CONSENT_KEY, "yes");
+    } catch {
+      /* private browsing/storage limits should not block an explicit yes */
+    }
+    setCloudScanConsent(true);
+    const source = pendingPhotoSource;
+    setPendingPhotoSource(null);
+    if (!source) return;
+    (source === "camera" ? cameraRef : photosRef).current?.click();
+  }
+
+  function dismissCloudScanConsent() {
+    setPendingPhotoSource(null);
+  }
+
   function startScan(withPhoto: string | null, file?: File | null) {
     const run = ++scanRun.current;
     setPhoto(withPhoto);
@@ -246,9 +284,11 @@ export default function ScanPage() {
       timers.current.push(setTimeout(resolve, file ? 1200 : 2500));
     });
     const parse: Promise<Receipt> = file
-      ? parseReceipt(file).catch(() => nextScan()) // graceful fallback to mock
+      ? cloudScanConsent
+        ? parseReceipt(file).catch(() => nextScan()) // graceful fallback to mock
+        : Promise.resolve(nextScan())
       : Promise.resolve(nextScan());
-    const imageReady: Promise<PreparedReceiptImage | null> = file
+    const imageReady: Promise<PreparedReceiptImage | null> = file && cloudScanConsent
       ? prepareReceiptImage(file)
       : Promise.resolve(null);
 
@@ -258,7 +298,7 @@ export default function ScanPage() {
         ? await uploadReceiptImage(image, r.id).catch(() => image.fallback)
         : null;
       if (scanRun.current !== run) return; // upload may have been superseded too
-      if (file) {
+      if (file && cloudScanConsent) {
         const history = receipts.some((receipt) => receipt.id === r.id)
           ? receipts
           : [r, ...receipts];
@@ -278,6 +318,11 @@ export default function ScanPage() {
 
   function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
+    if (file && !cloudScanConsent) {
+      setPendingPhotoSource("photos");
+      e.target.value = "";
+      return;
+    }
     startScan(file ? URL.createObjectURL(file) : null, file);
     e.target.value = "";
   }
@@ -365,7 +410,7 @@ export default function ScanPage() {
               <div className="grid w-full grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => cameraRef.current?.click()}
+                  onClick={() => pickReceiptPhoto("camera")}
                   className="flex items-center justify-center gap-2 rounded-2xl bg-ink px-3 py-4 text-sm font-semibold text-white shadow-soft active:scale-[0.98] transition-transform"
                 >
                   <CameraChoiceIcon />
@@ -373,13 +418,48 @@ export default function ScanPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => photosRef.current?.click()}
+                  onClick={() => pickReceiptPhoto("photos")}
                   className="flex items-center justify-center gap-2 rounded-2xl bg-white px-3 py-4 text-sm font-semibold text-ink shadow-soft ring-1 ring-ink/10 active:scale-[0.98] transition-transform"
                 >
                   <PhotosChoiceIcon />
                   Photos
                 </button>
               </div>
+              <AnimatePresence>
+                {pendingPhotoSource && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 8 }}
+                    className="w-full rounded-3xl bg-white p-4 text-left shadow-soft ring-1 ring-ink/10"
+                  >
+                    <p className="font-display text-[15px] font-semibold text-ink">
+                      Send this receipt to cloud scan?
+                    </p>
+                    <p className="mt-1 text-[13px] leading-snug text-ink-soft">
+                      To read a real photo, Snoopy sends a compressed image to our
+                      cloud AI parser. If you&apos;re signed in, the image can also
+                      be saved privately with your receipt history.
+                    </p>
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={dismissCloudScanConsent}
+                        className="flex-1 rounded-2xl bg-ink/5 py-3 text-sm font-semibold text-ink active:scale-[0.98] transition-transform"
+                      >
+                        Not now
+                      </button>
+                      <button
+                        type="button"
+                        onClick={allowCloudScan}
+                        className="flex-[1.15] rounded-2xl bg-ink py-3 text-sm font-semibold text-white active:scale-[0.98] transition-transform"
+                      >
+                        Allow cloud scan
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             <button

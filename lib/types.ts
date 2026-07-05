@@ -25,6 +25,8 @@ export interface Receipt {
   items: LineItem[];
   /** short headline nugget shown on the feed card */
   nugget?: string;
+  /** User-marked receipt worth keeping close. */
+  favorite?: boolean;
   /** When this receipt was saved into Snoopy, used for history ordering. */
   savedAt?: string;
   /**

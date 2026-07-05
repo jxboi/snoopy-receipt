@@ -52,6 +52,7 @@ interface StoreValue {
   /** build the next simulated scan (does NOT persist until saveReceipt) */
   nextScan: () => Receipt;
   saveReceipt: (r: Receipt) => void;
+  toggleFavorite: (id: string) => void;
   removeReceipt: (id: string) => void;
   clearReceipts: () => void;
   reset: () => void;
@@ -240,6 +241,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const clearLastAdded = useCallback(() => setLastAddedId(null), []);
 
+  const toggleFavorite = useCallback(
+    (id: string) => {
+      setReceipts((prev) => {
+        const next = prev.map((receipt) =>
+          receipt.id === id
+            ? { ...receipt, favorite: !receipt.favorite }
+            : receipt
+        );
+        persist(next);
+        return next;
+      });
+    },
+    [persist]
+  );
+
   const signIn = useCallback(
     ({ name, email, signedInAt }: SignInInput) => {
       const cleanEmail = normalizeEmail(email);
@@ -362,6 +378,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       signOut,
       nextScan,
       saveReceipt,
+      toggleFavorite,
       removeReceipt,
       clearReceipts,
       reset,
@@ -377,6 +394,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       signOut,
       nextScan,
       saveReceipt,
+      toggleFavorite,
       removeReceipt,
       clearReceipts,
       reset,

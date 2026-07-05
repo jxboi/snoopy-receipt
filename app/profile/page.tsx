@@ -25,6 +25,7 @@ export default function ProfilePage() {
   const topCategory = report.slices[0];
   const topMeta = topCategory ? categoryMeta(topCategory.category) : null;
   const bestFind = receipts.find((r) => r.nugget)?.nugget;
+  const showDemoReset = process.env.NODE_ENV !== "production";
 
   function exportData() {
     const payload = {
@@ -96,6 +97,11 @@ export default function ProfilePage() {
                       ? "Checking sync..."
                       : "Device-only for now"}
                 </p>
+                {syncState === "local" && syncError ? (
+                  <p className="mt-1 text-[11px] font-medium text-coral-deep">
+                    Sync check: {syncError}
+                  </p>
+                ) : null}
               </div>
               <button
                 onClick={signOut}
@@ -105,8 +111,6 @@ export default function ProfilePage() {
               </button>
             </div>
           </motion.section>
-
-          <ModePanel isSignedIn syncState={syncState} syncError={syncError} />
 
           <section className="grid grid-cols-2 gap-3">
             <MiniStat
@@ -157,13 +161,15 @@ export default function ProfilePage() {
 
           <section className="flex flex-col gap-2.5">
             <ActionButton onClick={exportData} label="Export my data" />
-            <ActionButton onClick={reset} label="Reset demo data" />
+            {showDemoReset ? (
+              <ActionButton onClick={reset} label="Reset demo data" />
+            ) : null}
             <ActionButton onClick={deleteReceipts} label="Delete receipt history" danger />
           </section>
         </>
       ) : (
         <>
-          <ModePanel isSignedIn={false} syncState="local" syncError={null} />
+          <LocalModePanel />
           <SignedOutCard receiptCount={receipts.length} />
         </>
       )}
@@ -171,40 +177,7 @@ export default function ProfilePage() {
   );
 }
 
-function ModePanel({
-  isSignedIn,
-  syncState,
-  syncError,
-}: {
-  isSignedIn: boolean;
-  syncState: "local" | "syncing" | "synced";
-  syncError: string | null;
-}) {
-  const mode =
-    !isSignedIn
-      ? {
-          label: "Local mode",
-          title: "Receipts stay here",
-          body: "Scan freely. A magic link or Google sign-in turns this into an account when you are ready.",
-        }
-      : syncState === "local"
-        ? {
-            label: "Signed in",
-            title: "Device-only for now",
-            body: "Your account is active, but cloud storage is not reachable yet. New receipts still save on this device.",
-        }
-      : syncState === "syncing"
-        ? {
-            label: "Checking sync",
-            title: "Looking for your account shelf",
-            body: "Snoopy is checking whether cloud storage is ready for this profile.",
-          }
-        : {
-            label: "Account mode",
-            title: "Cloud sync is on",
-            body: "Receipts and private images are tied to this signed-in email session.",
-          };
-
+function LocalModePanel() {
   return (
     <motion.section
       initial={{ opacity: 0, y: 14 }}
@@ -215,28 +188,19 @@ function ModePanel({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-coral">
-            {mode.label}
+            Local mode
           </p>
           <h2 className="mt-1 font-display text-base font-semibold text-ink">
-            {mode.title}
+            Receipts stay here
           </h2>
           <p className="mt-1 text-sm leading-snug text-ink-soft text-balance">
-            {mode.body}
+            Scan freely. A magic link or Google sign-in turns this into an
+            account when you are ready.
           </p>
-          {isSignedIn && syncState === "local" && syncError ? (
-            <p className="mt-2 rounded-2xl bg-paper/70 px-3 py-2 text-xs font-medium text-coral-deep">
-              Sync check: {syncError}
-            </p>
-          ) : null}
         </div>
         <span
           className="mt-0.5 size-3 shrink-0 rounded-full"
-          style={{
-            background:
-              isSignedIn && syncState === "synced"
-                ? "var(--color-mint)"
-                : "var(--color-tangerine)",
-          }}
+          style={{ background: "var(--color-tangerine)" }}
         />
       </div>
     </motion.section>

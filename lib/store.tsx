@@ -22,6 +22,8 @@ const PROFILE_KEY = "snoopy.profile.v1";
 const RECEIPTS_PREFIX = "snoopy.receipts.v3";
 const FRESH_INDEX_PREFIX = "snoopy.freshIndex.v3";
 const GUEST_SCOPE = "guest";
+const DEMO_RECEIPTS =
+  process.env.NODE_ENV === "production" ? [] : sortNewest(buildSeedReceipts());
 
 export interface LocalProfile {
   id: string;
@@ -184,7 +186,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const legacyRaw = localStorage.getItem(LEGACY_RECEIPTS_KEY);
         stored = legacyRaw ? sortNewest(JSON.parse(legacyRaw) as Receipt[]) : null;
       }
-      const next = stored ?? sortNewest(buildSeedReceipts());
+      const next = stored ?? DEMO_RECEIPTS;
       setReceipts(next);
       writeReceipts(scope, next);
 
@@ -262,7 +264,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           });
       }
     } catch {
-      setReceipts(sortNewest(buildSeedReceipts()));
+      setReceipts(DEMO_RECEIPTS);
     }
     setReady(true);
   }, []);
@@ -399,14 +401,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     try {
       localStorage.removeItem(PROFILE_KEY);
       activeScope.current = GUEST_SCOPE;
-      const stored = readReceipts(GUEST_SCOPE) ?? sortNewest(buildSeedReceipts());
+      const stored = readReceipts(GUEST_SCOPE) ?? DEMO_RECEIPTS;
       writeReceipts(GUEST_SCOPE, stored);
       freshIndex.current =
         Number(localStorage.getItem(freshIndexKey(GUEST_SCOPE)) ?? "0") || 0;
       setReceipts(stored);
     } catch {
       activeScope.current = GUEST_SCOPE;
-      setReceipts(sortNewest(buildSeedReceipts()));
+      setReceipts(DEMO_RECEIPTS);
     }
     setCurrentUser(null);
     setSyncState("local");
@@ -442,7 +444,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const reset = useCallback(() => {
     deleteBlobImages(receipts);
-    const seeds = sortNewest(buildSeedReceipts());
+    const seeds = DEMO_RECEIPTS;
     setReceipts(seeds);
     setLastAddedId(null);
     freshIndex.current = 0;

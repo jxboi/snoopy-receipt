@@ -38,12 +38,18 @@ interface SignInInput {
 
 type SyncState = "local" | "syncing" | "synced";
 
+interface RemoteReceiptsResult {
+  receipts: Receipt[] | null;
+  error: string | null;
+}
+
 interface StoreValue {
   receipts: Receipt[]; // newest first
   ready: boolean;
   currentUser: LocalProfile | null;
   isSignedIn: boolean;
   syncState: SyncState;
+  syncError: string | null;
   /** id of the most recently saved receipt, so the feed can pop it */
   lastAddedId: string | null;
   clearLastAdded: () => void;
@@ -113,11 +119,23 @@ function deleteBlobImages(list: Receipt[]) {
   });
 }
 
-async function fetchRemoteReceipts(): Promise<Receipt[] | null> {
+async function fetchRemoteReceipts(): Promise<RemoteReceiptsResult> {
   const res = await fetch("/api/receipts");
-  if (!res.ok) return null;
+  if (!res.ok) {
+    let error = res.statusText || "sync_failed";
+    try {
+      const payload = (await res.json()) as { error?: string };
+      error = payload.error ?? error;
+    } catch {
+      /* keep status text */
+    }
+    return { receipts: null, error: `${res.status} ${error}` };
+  }
   const payload = (await res.json()) as { receipts?: Receipt[] };
-  return Array.isArray(payload.receipts) ? sortNewest(payload.receipts) : [];
+  return {
+    receipts: Array.isArray(payload.receipts) ? sortNewest(payload.receipts) : [],
+    error: null,
+  };
 }
 
 async function fetchSessionProfile(): Promise<LocalProfile | null> {
@@ -145,6 +163,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [currentUser, setCurrentUser] = useState<LocalProfile | null>(null);
   const [syncState, setSyncState] = useState<SyncState>("local");
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [lastAddedId, setLastAddedId] = useState<string | null>(null);
   const freshIndex = useRef(0);
   const activeScope = useRef(GUEST_SCOPE);
@@ -175,11 +194,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (profile) {
         setSyncState("syncing");
         fetchRemoteReceipts()
-          .then((remote) => {
+          .then(({ receipts: remote, error }) => {
             if (!remote) {
+              setSyncError(error);
               setSyncState("local");
               return;
             }
+            setSyncError(null);
             const nextReceipts = remote.length > 0 ? remote : next;
             setReceipts(nextReceipts);
             writeReceipts(scope, nextReceipts);
@@ -188,7 +209,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             }
             setSyncState("synced");
           })
-          .catch(() => setSyncState("local"));
+          .catch(() => {
+            setSyncError("network_error");
+            setSyncState("local");
+          });
       } else {
         fetchSessionProfile()
           .then((sessionProfile) => {
@@ -210,11 +234,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             setReceipts(sortNewest(scopedReceipts));
             setSyncState("syncing");
             fetchRemoteReceipts()
-              .then((remote) => {
+              .then(({ receipts: remote, error }) => {
                 if (!remote) {
+                  setSyncError(error);
                   setSyncState("local");
                   return;
                 }
+                setSyncError(null);
                 const nextReceipts =
                   remote.length > 0 ? remote : sortNewest(scopedReceipts);
                 writeReceipts(nextScope, nextReceipts);
@@ -226,7 +252,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
                 }
                 setSyncState("synced");
               })
-              .catch(() => setSyncState("local"));
+              .catch(() => {
+                setSyncError("network_error");
+                setSyncState("local");
+              });
           })
           .catch(() => {
             /* no server session; stay in local mode */
@@ -252,9 +281,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       if (user) {
         setSyncState("syncing");
+        setSyncError(null);
         pushRemoteReceipts(user, list)
           .then((ok) => setSyncState(ok ? "synced" : "local"))
-          .catch(() => setSyncState("local"));
+          .catch(() => {
+            setSyncError("network_error");
+            setSyncState("local");
+          });
       }
     },
     [currentUser]
@@ -333,12 +366,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setCurrentUser(profile);
       setLastAddedId(null);
       setSyncState("syncing");
+      setSyncError(null);
       fetchRemoteReceipts()
-        .then((remote) => {
+        .then(({ receipts: remote, error }) => {
           if (!remote) {
+            setSyncError(error);
             setSyncState("local");
             return;
           }
+          setSyncError(null);
           const localReceipts = readReceipts(nextScope) ?? receipts;
           const nextReceipts = remote.length > 0 ? remote : sortNewest(localReceipts);
           writeReceipts(nextScope, nextReceipts);
@@ -348,7 +384,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           }
           setSyncState("synced");
         })
-        .catch(() => setSyncState("local"));
+        .catch(() => {
+          setSyncError("network_error");
+          setSyncState("local");
+        });
     },
     [receipts]
   );
@@ -371,6 +410,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
     setCurrentUser(null);
     setSyncState("local");
+    setSyncError(null);
     setLastAddedId(null);
   }, []);
 
@@ -421,6 +461,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       currentUser,
       isSignedIn: Boolean(currentUser),
       syncState,
+      syncError,
       lastAddedId,
       clearLastAdded,
       signIn,
@@ -437,6 +478,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       ready,
       currentUser,
       syncState,
+      syncError,
       lastAddedId,
       clearLastAdded,
       signIn,

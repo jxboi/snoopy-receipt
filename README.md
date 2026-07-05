@@ -19,9 +19,9 @@ npm install
 npm run dev
 ```
 
-Open the app on a phone-sized viewport (it's mobile-first). It seeds ~10 receipts on
-first load so the feed and insights look alive immediately. **Insights → "Reset demo
-data"** clears everything back to the seed.
+Open the app on a phone-sized viewport (it's mobile-first). In development it seeds
+~10 receipts on first load so the feed and insights look alive immediately. Production
+starts empty until a real receipt is saved.
 
 ## The experience
 

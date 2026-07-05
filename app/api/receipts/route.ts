@@ -1,4 +1,4 @@
-import { get, put } from "@vercel/blob";
+import { BlobNotFoundError, get, put } from "@vercel/blob";
 import { NextRequest, NextResponse } from "next/server";
 import { sessionFromRequest } from "@/lib/authSession";
 import type { Receipt } from "@/lib/types";
@@ -53,6 +53,9 @@ export async function GET(request: NextRequest) {
       receipts: looksLikeReceipts(payload.receipts) ? payload.receipts : [],
     });
   } catch (err) {
+    if (err instanceof BlobNotFoundError) {
+      return NextResponse.json({ receipts: [] });
+    }
     console.error("receipt sync read failed:", err);
     return NextResponse.json({ error: "sync_read_failed" }, { status: 502 });
   }

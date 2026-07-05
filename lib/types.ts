@@ -25,6 +25,16 @@ export interface Receipt {
   items: LineItem[];
   /** short headline nugget shown on the feed card */
   nugget?: string;
+  /** When this receipt was saved into Snoopy, used for history ordering. */
+  savedAt?: string;
+  /**
+   * Optional receipt image reference. In the local prototype `imageUrl` can be a
+   * compressed data URL; once Blob is wired it should become the private/signed
+   * display URL and `imagePath` should hold the Blob pathname.
+   */
+  imageUrl?: string;
+  imagePath?: string;
+  imageStoredAt?: string;
   /**
    * Rough total food-energy estimate (kcal) across every edible item, from the
    * vision parse. Undefined when nothing on the receipt is food (fuel, health,

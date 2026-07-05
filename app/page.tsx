@@ -79,7 +79,7 @@ export default function HomePage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.12 }}
       >
-        <Link href="/report">
+        <Link href="/insights">
           <div className="rounded-3xl bg-paper p-5 shadow-soft active:scale-[0.99] transition-transform">
             <div className="flex items-start justify-between">
               <div>
@@ -91,7 +91,7 @@ export default function HomePage() {
                 </p>
               </div>
               <span className="mt-1 text-sm font-semibold text-coral">
-                See report →
+                See insights →
               </span>
             </div>
             <p className="mt-2 text-sm text-ink-soft text-balance">

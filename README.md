@@ -1,7 +1,7 @@
 # 🔍 Snoopy — your receipt detective
 
-Most people throw receipts away. Snoopy turns them into a small, delightful weekly
-report about your real life — spending patterns, little habits, quiet savings, and
+Most people throw receipts away. Snoopy turns them into small, delightful weekly
+insights about your real life — spending patterns, little habits, quiet savings, and
 things you didn't notice. Friendly and curious, more like a smart friend than an
 accountant.
 
@@ -20,7 +20,7 @@ npm run dev
 ```
 
 Open the app on a phone-sized viewport (it's mobile-first). It seeds ~10 receipts on
-first load so the feed and report look alive immediately. **Report → "Reset demo
+first load so the feed and insights look alive immediately. **Insights → "Reset demo
 data"** clears everything back to the seed.
 
 ## The experience
@@ -30,8 +30,10 @@ data"** clears everything back to the seed.
 - **Scan** (`app/scan/page.tsx`) — the magic moment: pick a photo → Snoopy "sniffs"
   → an animated reveal of the parsed receipt **and** 1–3 insights, always at least
   one. Tap items on any feed card to expand them.
-- **Report** (`app/report/page.tsx`) — the "smart friend" digest: a headline, a
+- **Insights** (`app/insights/page.tsx`) — the "smart friend" digest: a headline, a
   playful category breakdown, quick stats, and a "Did you notice?" list.
+- **History** (`app/history/page.tsx`) — every saved receipt, grouped newest first,
+  with expandable items and receipt photos when present.
 
 ## How it's built
 
@@ -41,7 +43,7 @@ data"** clears everything back to the seed.
 | Styling | Tailwind v4 (tokens in `app/globals.css` under `@theme`) |
 | Motion | `motion` (Framer Motion) |
 | Fonts | Fredoka (display) + Plus Jakarta Sans (body) |
-| Persistence | `localStorage` via a small store (`lib/store.tsx`) |
+| Persistence | Local cache in `lib/store.tsx`; signed-in backend ownership via Vercel Blob |
 
 ### Where the logic lives (`lib/`)
 
@@ -82,3 +84,42 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 Then upload a real receipt photo. `revealInsights()` and the rest of the UI already
 consume the `Receipt` shape, so there's nothing else to wire.
+
+### Enable email magic links
+
+Profile sign-in uses password-free magic links. In local development, if no email
+provider is configured, Snoopy shows a dev-only link after you submit the form.
+
+To send real emails, configure Resend:
+
+```bash
+RESEND_API_KEY=re_...
+AUTH_EMAIL_FROM="Snoopy <hello@yourdomain.com>"
+MAGIC_LINK_SECRET="a-long-random-secret"
+NEXT_PUBLIC_APP_URL="https://your-domain.com"
+```
+
+Until your sending domain is verified, Resend's test sender can be used for local
+checks:
+
+```bash
+AUTH_EMAIL_FROM="Snoopy <onboarding@resend.dev>"
+```
+
+When a magic link is verified, the server sets an httpOnly `snoopy_session` cookie.
+Receipt sync and private receipt-image routes derive the owner from that cookie; the
+client never chooses the cloud owner id.
+
+### Enable account-owned storage
+
+Snoopy can run in local mode with no storage env vars. Signed-out receipts stay on
+the device. Once Vercel Blob is configured and the user signs in, receipt JSON and
+private receipt images are stored under that account's server-owned path.
+
+```bash
+BLOB_READ_WRITE_TOKEN=vercel_blob_...
+```
+
+Without Blob, the UI still works and shows device-only mode. Uploaded receipt photos
+are resized/compressed before any upload attempt, then kept as local preview data if
+cloud storage is unavailable.

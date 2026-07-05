@@ -110,6 +110,31 @@ When a magic link is verified, the server sets an httpOnly `snoopy_session` cook
 Receipt sync and private receipt-image routes derive the owner from that cookie; the
 client never chooses the cloud owner id.
 
+### Enable Google sign-in
+
+Create a Google OAuth web client, then add this redirect URI:
+
+```txt
+http://localhost:3000/api/auth/google/callback
+```
+
+For production, add the same path on your production origin:
+
+```txt
+https://your-domain.com/api/auth/google/callback
+```
+
+Set the credentials locally and in Vercel:
+
+```bash
+GOOGLE_CLIENT_ID="..."
+GOOGLE_CLIENT_SECRET="..."
+# Optional when NEXT_PUBLIC_APP_URL is not enough:
+GOOGLE_REDIRECT_URI="https://your-domain.com/api/auth/google/callback"
+```
+
+Google sign-in reuses the same httpOnly `snoopy_session` cookie as magic links.
+
 ### Enable account-owned storage
 
 Snoopy can run in local mode with no storage env vars. Signed-out receipts stay on
@@ -153,6 +178,13 @@ For real magic-link email delivery, also add:
 ```bash
 RESEND_API_KEY=re_...
 AUTH_EMAIL_FROM="Snoopy <hello@yourdomain.com>"
+```
+
+For Google sign-in, also add:
+
+```bash
+GOOGLE_CLIENT_ID="..."
+GOOGLE_CLIENT_SECRET="..."
 ```
 
 Add these to **Production** and **Preview**. Add them to **Development** too if you

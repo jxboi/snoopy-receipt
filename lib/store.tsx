@@ -120,6 +120,13 @@ async function fetchRemoteReceipts(): Promise<Receipt[] | null> {
   return Array.isArray(payload.receipts) ? sortNewest(payload.receipts) : [];
 }
 
+async function fetchSessionProfile(): Promise<LocalProfile | null> {
+  const res = await fetch("/api/auth/session");
+  if (!res.ok) return null;
+  const payload = (await res.json()) as { profile?: LocalProfile | null };
+  return payload.profile ?? null;
+}
+
 async function pushRemoteReceipts(
   user: LocalProfile | null,
   list: Receipt[]
@@ -182,6 +189,48 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             setSyncState("synced");
           })
           .catch(() => setSyncState("local"));
+      } else {
+        fetchSessionProfile()
+          .then((sessionProfile) => {
+            if (!sessionProfile) return;
+            const nextScope = scopeFor(sessionProfile);
+            const scopedReceipts = readReceipts(nextScope) ?? next;
+
+            try {
+              localStorage.setItem(PROFILE_KEY, JSON.stringify(sessionProfile));
+              writeReceipts(nextScope, scopedReceipts);
+              freshIndex.current =
+                Number(localStorage.getItem(freshIndexKey(nextScope)) ?? "0") || 0;
+            } catch {
+              /* storage full or unavailable — keep the server session active */
+            }
+
+            activeScope.current = nextScope;
+            setCurrentUser(sessionProfile);
+            setReceipts(sortNewest(scopedReceipts));
+            setSyncState("syncing");
+            fetchRemoteReceipts()
+              .then((remote) => {
+                if (!remote) {
+                  setSyncState("local");
+                  return;
+                }
+                const nextReceipts =
+                  remote.length > 0 ? remote : sortNewest(scopedReceipts);
+                writeReceipts(nextScope, nextReceipts);
+                setReceipts(nextReceipts);
+                if (remote.length === 0) {
+                  pushRemoteReceipts(sessionProfile, nextReceipts).catch(
+                    () => false
+                  );
+                }
+                setSyncState("synced");
+              })
+              .catch(() => setSyncState("local"));
+          })
+          .catch(() => {
+            /* no server session; stay in local mode */
+          });
       }
     } catch {
       setReceipts(sortNewest(buildSeedReceipts()));

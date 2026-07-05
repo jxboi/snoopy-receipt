@@ -25,6 +25,65 @@ interface PreparedReceiptImage {
   fallback: ReceiptImageAttachment;
 }
 
+function CameraChoiceIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+    >
+      <path
+        d="M4.5 8.4A1.6 1.6 0 0 1 6.1 6.8h1.7l.9-1.4a1.1 1.1 0 0 1 .9-.5h4.8a1.1 1.1 0 0 1 .9.5l.9 1.4h1.7a1.6 1.6 0 0 1 1.6 1.6v8.1a1.6 1.6 0 0 1-1.6 1.6H6.1a1.6 1.6 0 0 1-1.6-1.6V8.4Z"
+        stroke="currentColor"
+        strokeWidth="2.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12 15.2a3.1 3.1 0 1 0 0-6.2 3.1 3.1 0 0 0 0 6.2Z"
+        stroke="currentColor"
+        strokeWidth="2.1"
+      />
+    </svg>
+  );
+}
+
+function PhotosChoiceIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+    >
+      <path
+        d="M5.6 7.3H16a1.7 1.7 0 0 1 1.7 1.7v9.1a1.7 1.7 0 0 1-1.7 1.7H5.6a1.7 1.7 0 0 1-1.7-1.7V9a1.7 1.7 0 0 1 1.7-1.7Z"
+        stroke="currentColor"
+        strokeWidth="2.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7 15.9 9.8 13l2.4 2.5 1.4-1.4 2.8 2.9M8.3 10.6h.1"
+        stroke="currentColor"
+        strokeWidth="2.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7.4 4.2h11A1.7 1.7 0 0 1 20.1 6v9.4"
+        stroke="currentColor"
+        strokeWidth="2.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 const SNIFF_LINES = [
   "Focusing the magnifying glass…",
   "Reading the squiggly total…",
@@ -131,7 +190,8 @@ export default function ScanPage() {
     useState<ReceiptImageAttachment | null>(null);
   const [autoSavedId, setAutoSavedId] = useState<string | null>(null);
   const [line, setLine] = useState(0);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const photosRef = useRef<HTMLInputElement>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   // bumped on every scan/reset so a slow parse can't reveal after the user moves on
   const scanRun = useRef(0);
@@ -251,10 +311,17 @@ export default function ScanPage() {
   return (
     <div className="flex min-h-[80dvh] flex-col">
       <input
-        ref={fileRef}
+        ref={cameraRef}
         type="file"
         accept="image/*"
         capture="environment"
+        onChange={onPick}
+        className="hidden"
+      />
+      <input
+        ref={photosRef}
+        type="file"
+        accept="image/*"
         onChange={onPick}
         className="hidden"
       />
@@ -278,9 +345,8 @@ export default function ScanPage() {
               </p>
             </div>
 
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="group relative flex flex-1 flex-col items-center justify-center gap-4 rounded-[32px] border-2 border-dashed border-coral/40 bg-paper/60 p-8 active:scale-[0.99] transition-transform"
+            <div
+              className="relative flex flex-1 flex-col items-center justify-center gap-6 rounded-[32px] border-2 border-dashed border-coral/40 bg-paper/60 p-8"
             >
               <motion.div
                 animate={{ y: [0, -8, 0] }}
@@ -290,13 +356,31 @@ export default function ScanPage() {
               </motion.div>
               <div className="text-center">
                 <p className="font-display text-lg font-semibold text-ink">
-                  Tap to snap or upload
+                  Pick your receipt path
                 </p>
                 <p className="mt-1 text-sm text-ink-soft">
-                  Camera or camera roll — your call
+                  Fresh snap or camera roll — your call
                 </p>
               </div>
-            </button>
+              <div className="grid w-full grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => cameraRef.current?.click()}
+                  className="flex items-center justify-center gap-2 rounded-2xl bg-ink px-3 py-4 text-sm font-semibold text-white shadow-soft active:scale-[0.98] transition-transform"
+                >
+                  <CameraChoiceIcon />
+                  Camera
+                </button>
+                <button
+                  type="button"
+                  onClick={() => photosRef.current?.click()}
+                  className="flex items-center justify-center gap-2 rounded-2xl bg-white px-3 py-4 text-sm font-semibold text-ink shadow-soft ring-1 ring-ink/10 active:scale-[0.98] transition-transform"
+                >
+                  <PhotosChoiceIcon />
+                  Photos
+                </button>
+              </div>
+            </div>
 
             <button
               onClick={() => startScan(null)}

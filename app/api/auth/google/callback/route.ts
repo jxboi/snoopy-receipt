@@ -29,9 +29,10 @@ function redirectUri(request: Request): string {
   );
 }
 
-function profileRedirect(request: NextRequest, status: string): NextResponse {
+function googleAuthRedirect(request: NextRequest, status: string): NextResponse {
+  const path = status === "ok" ? "/" : "/profile";
   return NextResponse.redirect(
-    new URL(`/profile?google=${status}`, request.url)
+    new URL(`${path}?google=${status}`, request.url)
   );
 }
 
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest) {
   const configured =
     process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET;
   if (!configured) {
-    const response = profileRedirect(request, "not_configured");
+    const response = googleAuthRedirect(request, "not_configured");
     clearState(response);
     return response;
   }
@@ -85,7 +86,7 @@ export async function GET(request: NextRequest) {
   const state = request.nextUrl.searchParams.get("state");
   const expectedState = request.cookies.get(GOOGLE_OAUTH_STATE_COOKIE)?.value;
   if (!code || !state || !expectedState || state !== expectedState) {
-    const response = profileRedirect(request, "invalid_state");
+    const response = googleAuthRedirect(request, "invalid_state");
     clearState(response);
     return response;
   }
@@ -98,14 +99,14 @@ export async function GET(request: NextRequest) {
         token.error,
         token.error_description
       );
-      const response = profileRedirect(request, "token_failed");
+      const response = googleAuthRedirect(request, "token_failed");
       clearState(response);
       return response;
     }
 
     const googleProfile = await fetchUserInfo(token.access_token);
     if (!googleProfile.email || googleProfile.email_verified === false) {
-      const response = profileRedirect(request, "unverified_email");
+      const response = googleAuthRedirect(request, "unverified_email");
       clearState(response);
       return response;
     }
@@ -114,7 +115,7 @@ export async function GET(request: NextRequest) {
       email: googleProfile.email,
       name: googleProfile.name,
     });
-    const response = profileRedirect(request, "ok");
+    const response = googleAuthRedirect(request, "ok");
     response.cookies.set(SESSION_COOKIE, createSessionToken(profile), {
       httpOnly: true,
       sameSite: "lax",
@@ -126,7 +127,7 @@ export async function GET(request: NextRequest) {
     return response;
   } catch (error) {
     console.error("google oauth failed:", error);
-    const response = profileRedirect(request, "failed");
+    const response = googleAuthRedirect(request, "failed");
     clearState(response);
     return response;
   }

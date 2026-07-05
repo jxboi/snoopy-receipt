@@ -123,3 +123,86 @@ BLOB_READ_WRITE_TOKEN=vercel_blob_...
 Without Blob, the UI still works and shows device-only mode. Uploaded receipt photos
 are resized/compressed before any upload attempt, then kept as local preview data if
 cloud storage is unavailable.
+
+## Publish to Vercel
+
+The repo is built for Vercel's Next.js runtime.
+
+### 1. Link the project
+
+```bash
+npx vercel login
+npx vercel link
+```
+
+Use the existing `snoopy-receipt` project when prompted, or create a new Vercel
+project if this is a fresh deployment.
+
+### 2. Add production environment variables
+
+In Vercel Dashboard → Project → Settings → Environment Variables, add:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-...
+MAGIC_LINK_SECRET="a-long-random-secret"
+NEXT_PUBLIC_APP_URL="https://your-production-domain.com"
+```
+
+For real magic-link email delivery, also add:
+
+```bash
+RESEND_API_KEY=re_...
+AUTH_EMAIL_FROM="Snoopy <hello@yourdomain.com>"
+```
+
+Add these to **Production** and **Preview**. Add them to **Development** too if you
+want `vercel env pull` to copy them into `.env.local`.
+
+### 3. Connect Vercel Blob
+
+Create or open the Blob store in Vercel Dashboard → Storage. Connect it to the
+Vercel project for:
+
+- Development
+- Preview
+- Production
+
+For local development, verify Blob OIDC works:
+
+```bash
+npx vercel env pull .env.local
+npx vercel blob list
+```
+
+If `vercel blob list` says OIDC is not enabled for `development`, edit the Blob
+store's project connection and enable the Development environment. As a fallback,
+create a Blob read-write token and set `BLOB_READ_WRITE_TOKEN` in `.env.local`.
+
+`vercel env pull .env.local` rewrites the target file. To avoid overwriting local
+secrets while testing env changes, pull to a temporary file and merge manually:
+
+```bash
+npx vercel env pull .env.vercel.local
+```
+
+### 4. Deploy
+
+Deploy a preview:
+
+```bash
+npx vercel
+```
+
+Deploy production:
+
+```bash
+npx vercel --prod
+```
+
+After deployment, open `/profile`, sign in with a magic link, then upload and save a
+receipt. In account mode, saved data lands in private Blob paths like:
+
+```txt
+users/{profileId}/receipts/index.json
+users/{profileId}/receipts/{receiptId}-{timestamp}.jpg
+```

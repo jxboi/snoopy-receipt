@@ -104,7 +104,7 @@ function blobImagePaths(list: Receipt[]): string[] {
     .filter(
       (path): path is string =>
         Boolean(path) &&
-        path!.startsWith("users/")
+        (path!.startsWith("users/") || path!.startsWith("receipt-images/"))
     );
 }
 

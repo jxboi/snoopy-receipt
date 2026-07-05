@@ -6,6 +6,7 @@ import {
   profileIdForEmail,
   type AccountProfile,
 } from "./identity";
+import { authSecret } from "./authSecret";
 
 export const SESSION_COOKIE = "snoopy_session";
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
@@ -16,20 +17,12 @@ interface SessionPayload extends AccountProfile {
 
 export type AuthSession = SessionPayload;
 
-function secret(): string {
-  return (
-    process.env.MAGIC_LINK_SECRET ||
-    process.env.AUTH_SECRET ||
-    "snoopy-dev-magic-link-secret"
-  );
-}
-
 function encode(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
 function sign(payload: string): string {
-  return createHmac("sha256", secret()).update(payload).digest("base64url");
+  return createHmac("sha256", authSecret()).update(payload).digest("base64url");
 }
 
 export function profileFromEmail(input: {

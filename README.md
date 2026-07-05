@@ -139,7 +139,9 @@ Google sign-in reuses the same httpOnly `snoopy_session` cookie as magic links.
 
 Snoopy can run in local mode with no storage env vars. Signed-out receipts stay on
 the device. Once Vercel Blob is configured and the user signs in, receipt JSON and
-private receipt images are stored under that account's server-owned path.
+private receipt images are stored in Blob. Receipt JSON stays under the account's
+server-owned path; receipt image objects use random ownerless paths so browsing
+the image bucket does not reveal the account owner.
 
 ```bash
 BLOB_READ_WRITE_TOKEN=vercel_blob_...
@@ -236,5 +238,5 @@ receipt. In account mode, saved data lands in private Blob paths like:
 
 ```txt
 users/{profileId}/receipts/index.json
-users/{profileId}/receipts/{receiptId}-{timestamp}.jpg
+receipt-images/{random-uuid}.jpg
 ```

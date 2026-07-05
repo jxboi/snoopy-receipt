@@ -1,6 +1,8 @@
-import { del, get, put } from "@vercel/blob";
+import { randomUUID } from "crypto";
+import { BlobNotFoundError, del, get, put } from "@vercel/blob";
 import { NextRequest, NextResponse } from "next/server";
 import { sessionFromRequest } from "@/lib/authSession";
+import type { Receipt } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -14,20 +16,59 @@ function blobReady(): boolean {
   );
 }
 
-function safeSegment(value: FormDataEntryValue | null, fallback: string): string {
-  const raw = typeof value === "string" ? value : fallback;
+function receiptIndexPath(ownerId: string): string {
+  return `users/${ownerId}/receipts/index.json`;
+}
+
+function looksLikeReceipts(value: unknown): value is Receipt[] {
   return (
-    raw
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 80) || fallback
+    Array.isArray(value) &&
+    value.every(
+      (r) =>
+        r &&
+        typeof r === "object" &&
+        typeof (r as Receipt).id === "string" &&
+        typeof (r as Receipt).merchant === "string" &&
+        Array.isArray((r as Receipt).items)
+    )
   );
 }
 
-function ownedReceiptImagePath(pathname: string, ownerId: string): boolean {
+async function ownedImagePaths(ownerId: string): Promise<Set<string>> {
+  try {
+    const result = await get(receiptIndexPath(ownerId), { access: "private" });
+    if (!result || result.statusCode === 304) return new Set();
+
+    const payload = (await new Response(result.stream).json()) as {
+      receipts?: unknown;
+    };
+    const receipts = looksLikeReceipts(payload.receipts) ? payload.receipts : [];
+    return new Set(
+      receipts
+        .map((receipt) => receipt.imagePath)
+        .filter((path): path is string => Boolean(path))
+    );
+  } catch (err) {
+    if (err instanceof BlobNotFoundError) return new Set();
+    throw err;
+  }
+}
+
+function pseudonymousReceiptImagePath(pathname: string): boolean {
+  return /^receipt-images\/[a-z0-9-]+\.jpg$/i.test(pathname);
+}
+
+function legacyOwnedReceiptImagePath(pathname: string, ownerId: string): boolean {
   return pathname.startsWith(`users/${ownerId}/receipts/`);
+}
+
+async function canAccessReceiptImage(
+  pathname: string,
+  ownerId: string
+): Promise<boolean> {
+  if (legacyOwnedReceiptImagePath(pathname, ownerId)) return true;
+  if (!pseudonymousReceiptImagePath(pathname)) return false;
+  return (await ownedImagePaths(ownerId)).has(pathname);
 }
 
 export async function POST(request: NextRequest) {
@@ -41,11 +82,9 @@ export async function POST(request: NextRequest) {
   }
 
   let file: FormDataEntryValue | null;
-  let receiptId: string;
   try {
     const form = await request.formData();
     file = form.get("image");
-    receiptId = safeSegment(form.get("receiptId"), Date.now().toString(36));
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
@@ -60,9 +99,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "image_too_large" }, { status: 413 });
   }
 
-  const pathname = `users/${session.id}/receipts/${receiptId}-${Date.now().toString(
-    36
-  )}.jpg`;
+  const pathname = `receipt-images/${randomUUID()}.jpg`;
 
   try {
     const blob = await put(pathname, file, {
@@ -95,7 +132,7 @@ export async function GET(request: NextRequest) {
   }
 
   const pathname = request.nextUrl.searchParams.get("pathname");
-  if (!pathname || !ownedReceiptImagePath(pathname, session.id)) {
+  if (!pathname || !(await canAccessReceiptImage(pathname, session.id))) {
     return NextResponse.json({ error: "bad_path" }, { status: 400 });
   }
 
@@ -142,8 +179,11 @@ export async function DELETE(request: NextRequest) {
 
   try {
     const body = (await request.json()) as { pathnames?: string[] };
-    const pathnames = (body.pathnames ?? []).filter((pathname) =>
-      ownedReceiptImagePath(pathname, session.id)
+    const ownedPaths = await ownedImagePaths(session.id);
+    const pathnames = (body.pathnames ?? []).filter(
+      (pathname) =>
+        legacyOwnedReceiptImagePath(pathname, session.id) ||
+        (pseudonymousReceiptImagePath(pathname) && ownedPaths.has(pathname))
     );
     if (pathnames.length > 0) await del(pathnames);
     return NextResponse.json({ ok: true, deleted: pathnames.length });

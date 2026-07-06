@@ -79,7 +79,7 @@ function groupByDay(receipts: Receipt[], sortMode: SortMode): ReceiptGroup[] {
 }
 
 export default function HistoryPage() {
-  const { receipts, toggleFavorite } = useStore();
+  const { receipts, toggleFavorite, removeReceipt } = useStore();
   const [sortMode, setSortMode] = useState<SortMode>("uploaded");
   const [sortOpen, setSortOpen] = useState(false);
   const sortedReceipts = useMemo(
@@ -176,6 +176,7 @@ export default function HistoryPage() {
                       receipt={receipt}
                       index={Math.min(groupIndex + receiptIndex, 6)}
                       onToggleFavorite={toggleFavorite}
+                      onDeleteReceipt={removeReceipt}
                     />
                   ))}
                 </div>

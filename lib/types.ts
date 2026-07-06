@@ -50,6 +50,12 @@ export interface Receipt {
    * pattern engine in that case. See `revealInsights` in lib/insights.ts.
    */
   observations?: Insight[];
+  /**
+   * Snapshot of the mixed reveal shown when this receipt was saved. Unlike
+   * `observations`, this includes local curiosities and history patterns, so
+   * history can show the same finds later instead of recomputing a new set.
+   */
+  revealedInsights?: Insight[];
 }
 
 export type InsightTone =

@@ -7,6 +7,8 @@ import { CountUp } from "@/components/CountUp";
 import { InsightCard } from "@/components/InsightCard";
 import { Mascot } from "@/components/Mascot";
 import { WeekChart } from "@/components/WeekChart";
+import { categoryMeta } from "@/lib/categories";
+import { money } from "@/lib/format";
 import { buildWeeklyReport } from "@/lib/insights";
 import { useStore } from "@/lib/store";
 
@@ -39,6 +41,8 @@ export default function InsightsPage() {
     "uncovered"
   );
   const report = useMemo(() => buildWeeklyReport(receipts), [receipts]);
+  const topCategory = report.slices[0];
+  const topMeta = topCategory ? categoryMeta(topCategory.category) : null;
 
   useEffect(() => {
     setWeekVerb(WEEK_VERBS[Math.floor(Math.random() * WEEK_VERBS.length)]);
@@ -110,10 +114,40 @@ export default function InsightsPage() {
             </div>
           </motion.div>
 
+          {topCategory && topMeta ? (
+            <motion.section
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="rounded-3xl bg-paper p-5 shadow-soft"
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className="grid size-11 shrink-0 place-items-center rounded-2xl text-xl"
+                  style={{ background: topMeta.soft }}
+                >
+                  {topMeta.emoji}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                    Weekly pattern
+                  </p>
+                  <p className="mt-1 font-display text-base font-semibold text-ink">
+                    {topMeta.label} is leading the week
+                  </p>
+                  <p className="mt-1 text-sm text-ink-soft text-balance">
+                    {topCategory.count} of {report.receiptCount} receipts,{" "}
+                    {money(topCategory.total)} total.
+                  </p>
+                </div>
+              </div>
+            </motion.section>
+          ) : null}
+
           <motion.section
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.12 }}
+            transition={{ delay: 0.14 }}
             className="rounded-3xl bg-paper p-5 shadow-soft"
           >
             <h2 className="mb-4 font-display text-base font-semibold text-ink">

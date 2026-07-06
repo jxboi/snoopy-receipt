@@ -4,7 +4,6 @@ import { motion } from "motion/react";
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { Mascot } from "@/components/Mascot";
-import { categoryMeta } from "@/lib/categories";
 import { money } from "@/lib/format";
 import { buildWeeklyReport } from "@/lib/insights";
 import { useStore } from "@/lib/store";
@@ -16,15 +15,14 @@ export default function ProfilePage() {
     isSignedIn,
     syncState,
     syncError,
+    cloudScanAllowed,
+    setCloudScanAllowed,
     signIn,
     signOut,
     clearReceipts,
     reset,
   } = useStore();
   const report = useMemo(() => buildWeeklyReport(receipts), [receipts]);
-  const topCategory = report.slices[0];
-  const topMeta = topCategory ? categoryMeta(topCategory.category) : null;
-  const bestFind = receipts.find((r) => r.nugget)?.nugget;
   const showDemoReset = process.env.NODE_ENV !== "production";
 
   function exportData() {
@@ -129,37 +127,11 @@ export default function ProfilePage() {
             />
           </section>
 
-          <motion.section
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.13 }}
-            className="rounded-3xl bg-paper p-5 shadow-soft"
-          >
-            <div className="flex items-start gap-3">
-              <div
-                className="grid size-11 shrink-0 place-items-center rounded-2xl text-xl"
-                style={{ background: topMeta?.soft ?? "var(--color-cream-deep)" }}
-              >
-                {topMeta?.emoji ?? "🧾"}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
-                  Current flavor
-                </p>
-                <p className="mt-1 font-display text-base font-semibold text-ink">
-                  {topMeta
-                    ? `${topMeta.label} is leading the week`
-                    : "No pattern yet"}
-                </p>
-                <p className="mt-1 text-sm text-ink-soft text-balance">
-                  {bestFind ??
-                    "A couple of receipts will give Snoopy something to sniff out."}
-                </p>
-              </div>
-            </div>
-          </motion.section>
-
           <section className="flex flex-col gap-2.5">
+            <CloudScanSetting
+              checked={cloudScanAllowed}
+              onChange={setCloudScanAllowed}
+            />
             <ActionButton onClick={exportData} label="Export my data" />
             {showDemoReset ? (
               <ActionButton onClick={reset} label="Reset demo data" />
@@ -168,9 +140,63 @@ export default function ProfilePage() {
           </section>
         </>
       ) : (
-        <SignedOutCard receiptCount={receipts.length} />
+        <>
+          <SignedOutCard receiptCount={receipts.length} />
+          <CloudScanSetting
+            checked={cloudScanAllowed}
+            onChange={setCloudScanAllowed}
+          />
+        </>
       )}
     </div>
+  );
+}
+
+function CloudScanSetting({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-3xl bg-paper p-4 shadow-soft"
+    >
+      <div className="flex items-center gap-3">
+        <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-cream text-xl">
+          ☁️
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-display text-base font-semibold text-ink">
+            Allow cloud scan
+          </p>
+          <p className="mt-0.5 text-[13px] leading-snug text-ink-soft">
+            Real receipt photos can use the cloud parser for sharper little finds.
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={checked}
+          aria-label="Allow cloud scan"
+          onClick={() => onChange(!checked)}
+          className="relative h-8 w-14 shrink-0 rounded-full p-1 transition-colors active:scale-[0.98]"
+          style={{
+            background: checked
+              ? "var(--color-coral)"
+              : "color-mix(in srgb, var(--color-ink) 12%, white)",
+          }}
+        >
+          <span
+            className="block size-6 rounded-full bg-white shadow-soft transition-transform"
+            style={{ transform: checked ? "translateX(1.5rem)" : "translateX(0)" }}
+          />
+        </button>
+      </div>
+    </motion.section>
   );
 }
 

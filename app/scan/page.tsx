@@ -94,7 +94,6 @@ const SNIFF_LINES = [
 ];
 
 const RECEIPT_IMAGE_MAX_EDGE = 900;
-const CLOUD_SCAN_CONSENT_KEY = "snoopy.cloudScanConsent.v1";
 
 function safeImageName(file: File): string {
   const fallback = "receipt.jpg";
@@ -183,7 +182,13 @@ async function uploadReceiptImage(
 
 export default function ScanPage() {
   const router = useRouter();
-  const { receipts, nextScan, saveReceipt } = useStore();
+  const {
+    receipts,
+    cloudScanAllowed,
+    setCloudScanAllowed,
+    nextScan,
+    saveReceipt,
+  } = useStore();
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [scanned, setScanned] = useState<Receipt | null>(null);
@@ -191,7 +196,6 @@ export default function ScanPage() {
   const [imageAttachment, setImageAttachment] =
     useState<ReceiptImageAttachment | null>(null);
   const [autoSavedId, setAutoSavedId] = useState<string | null>(null);
-  const [cloudScanConsent, setCloudScanConsent] = useState(false);
   const [pendingPhotoSource, setPendingPhotoSource] =
     useState<PhotoSource | null>(null);
   const [line, setLine] = useState(0);
@@ -215,14 +219,6 @@ export default function ScanPage() {
     [scanned, receipts]
   );
 
-  useEffect(() => {
-    try {
-      setCloudScanConsent(localStorage.getItem(CLOUD_SCAN_CONSENT_KEY) === "yes");
-    } catch {
-      setCloudScanConsent(false);
-    }
-  }, []);
-
   // clear any pending timers only when the page unmounts — NOT on every photo
   // change, or we'd cancel the reveal timer that startScan just scheduled.
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -245,7 +241,7 @@ export default function ScanPage() {
   }, [phase]);
 
   function pickReceiptPhoto(source: PhotoSource) {
-    if (!cloudScanConsent) {
+    if (!cloudScanAllowed) {
       setPendingPhotoSource(source);
       return;
     }
@@ -253,12 +249,7 @@ export default function ScanPage() {
   }
 
   function allowCloudScan() {
-    try {
-      localStorage.setItem(CLOUD_SCAN_CONSENT_KEY, "yes");
-    } catch {
-      /* private browsing/storage limits should not block an explicit yes */
-    }
-    setCloudScanConsent(true);
+    setCloudScanAllowed(true);
     const source = pendingPhotoSource;
     setPendingPhotoSource(null);
     if (!source) return;
@@ -284,11 +275,11 @@ export default function ScanPage() {
       timers.current.push(setTimeout(resolve, file ? 1200 : 2500));
     });
     const parse: Promise<Receipt> = file
-      ? cloudScanConsent
+      ? cloudScanAllowed
         ? parseReceipt(file).catch(() => nextScan()) // graceful fallback to mock
         : Promise.resolve(nextScan())
       : Promise.resolve(nextScan());
-    const imageReady: Promise<PreparedReceiptImage | null> = file && cloudScanConsent
+    const imageReady: Promise<PreparedReceiptImage | null> = file && cloudScanAllowed
       ? prepareReceiptImage(file)
       : Promise.resolve(null);
 
@@ -298,14 +289,16 @@ export default function ScanPage() {
         ? await uploadReceiptImage(image, r.id).catch(() => image.fallback)
         : null;
       if (scanRun.current !== run) return; // upload may have been superseded too
-      if (file && cloudScanConsent) {
+      if (file && cloudScanAllowed) {
         const history = receipts.some((receipt) => receipt.id === r.id)
           ? receipts
           : [r, ...receipts];
-        const nugget = revealInsights(r, history)[0]?.title;
+        const revealedInsights = revealInsights(r, history);
+        const nugget = revealedInsights[0]?.title;
         saveReceipt({
           ...r,
           ...(nugget ? { nugget } : {}),
+          revealedInsights,
           ...(attachment ?? {}),
         });
         setAutoSavedId(r.id);
@@ -318,7 +311,7 @@ export default function ScanPage() {
 
   function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
-    if (file && !cloudScanConsent) {
+    if (file && !cloudScanAllowed) {
       setPendingPhotoSource("photos");
       e.target.value = "";
       return;
@@ -334,6 +327,7 @@ export default function ScanPage() {
       saveReceipt({
         ...scanned,
         ...(nugget ? { nugget } : {}),
+        revealedInsights: insights,
         ...(imageAttachment ?? {}),
       });
     }

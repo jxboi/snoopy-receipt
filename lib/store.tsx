@@ -64,6 +64,7 @@ interface StoreValue {
   nextScan: () => Receipt;
   saveReceipt: (r: Receipt) => void;
   toggleFavorite: (id: string) => void;
+  setReceiptSplitBill: (id: string, splitBill: Receipt["splitBill"]) => void;
   removeReceipt: (id: string) => void;
   clearReceipts: () => void;
   reset: () => void;
@@ -361,6 +362,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [persist]
   );
 
+  const setReceiptSplitBill = useCallback(
+    (id: string, splitBill: Receipt["splitBill"]) => {
+      setReceipts((prev) => {
+        const next = prev.map((receipt) =>
+          receipt.id === id ? { ...receipt, splitBill } : receipt
+        );
+        persist(next);
+        return next;
+      });
+    },
+    [persist]
+  );
+
   const signIn = useCallback(
     ({ name, email, signedInAt }: SignInInput) => {
       const cleanEmail = normalizeEmail(email);
@@ -494,6 +508,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       nextScan,
       saveReceipt,
       toggleFavorite,
+      setReceiptSplitBill,
       removeReceipt,
       clearReceipts,
       reset,
@@ -513,6 +528,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       nextScan,
       saveReceipt,
       toggleFavorite,
+      setReceiptSplitBill,
       removeReceipt,
       clearReceipts,
       reset,

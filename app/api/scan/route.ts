@@ -24,7 +24,7 @@ interface Parsed {
   currency: string;
   total: number;
   calories: number;
-  items: { name: string; price: number; qty: number }[];
+  items: { name: string; price: number; qty: number; isFood: boolean }[];
   insights: { emoji: string; title: string; body: string }[];
 }
 
@@ -39,7 +39,8 @@ const SCHEMA: Record<string, unknown> = {
     category: {
       type: "string",
       enum: CATEGORY_IDS,
-      description: "Best-fit spending category for this purchase.",
+      description:
+        "Broad best-fit category for filtering this receipt in history.",
     },
     date: {
       type: "string",
@@ -69,8 +70,13 @@ const SCHEMA: Record<string, unknown> = {
           name: { type: "string", description: "Readable item name." },
           price: { type: "number", description: "Unit price for the item." },
           qty: { type: "integer", description: "Quantity; use 1 if not shown." },
+          isFood: {
+            type: "boolean",
+            description:
+              "True only when this line item is food or drink someone could include when splitting a bill. False for tax, tip, service fees, delivery fees, fuel, toiletries, supplements, clothing, household goods, rides, and other non-food lines.",
+          },
         },
-        required: ["name", "price", "qty"],
+        required: ["name", "price", "qty", "isFood"],
       },
     },
     insights: {
@@ -113,7 +119,7 @@ const SCHEMA: Record<string, unknown> = {
 
 const PROMPT = `You're reading a photo of a shopping receipt. Do two things.
 
-1) Extract the merchant, the line items, and the total exactly as printed. Pick the single best-fit category from the allowed list. Keep item names short and human — clean up ALL-CAPS or abbreviated names into something readable (e.g. "ORG BANANAS" → "Organic Bananas"). If the image isn't a receipt or is unreadable, still return your best guess from whatever text you can see. Also estimate the total food energy (calories) across all edible items using typical portion sizes — or 0 if nothing here is food or drink.
+1) Extract the merchant, the line items, and the total exactly as printed. Pick one broad category from the allowed list for history filtering: grocery, coffee, dining, transport, health, shopping, treats, or other. Keep item names short and human — clean up ALL-CAPS or abbreviated names into something readable (e.g. "ORG BANANAS" → "Organic Bananas"). For every line item, set isFood=true only if it is food or drink someone could include when splitting a bill; set isFood=false for tax, tip, service fees, delivery fees, fuel, toiletries, supplements, clothing, rides, household goods, and other non-food lines. If the image isn't a receipt or is unreadable, still return your best guess from whatever text you can see. Also estimate the total food energy (calories) across all edible items using typical portion sizes — or 0 if nothing here is food or drink.
 
 2) Find 2-3 genuinely interesting things to say about what's ON this receipt. This is the whole point of the app — the reward for uploading. You are a sharp, curious friend, NOT an accountant. Look at the actual items and notice something a person wouldn't have thought of:
 - what the basket implies (an occasion, a craving, a routine, a mood — "someone's making tacos tonight");
@@ -130,6 +136,7 @@ function toReceipt(parsed: Parsed): Receipt {
     price: it.price,
     qty: it.qty && it.qty !== 1 ? it.qty : undefined,
     emoji: guessEmoji(it.name),
+    isFood: Boolean(it.isFood),
   }));
 
   const category: CategoryId = CATEGORY_IDS.includes(parsed.category)

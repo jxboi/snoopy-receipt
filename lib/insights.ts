@@ -1,5 +1,6 @@
 import { categoryMeta } from "./categories";
 import { money, weekdayLabel, withinDays } from "./format";
+import { receiptSpend } from "./spend";
 import type {
   CategoryId,
   CategorySlice,
@@ -443,7 +444,7 @@ function firstItem(receipt: Receipt, match: RegExp): LineItem | undefined {
 
 function averageTotal(receipts: Receipt[]): number {
   if (!receipts.length) return 0;
-  return receipts.reduce((sum, r) => sum + r.total, 0) / receipts.length;
+  return receipts.reduce((sum, r) => sum + receiptSpend(r), 0) / receipts.length;
 }
 
 function comparisonCuriosities(
@@ -455,16 +456,17 @@ function comparisonCuriosities(
   if (!previous.length) return out;
 
   const avg = averageTotal(previous);
-  if (avg > 0 && receipt.total >= avg * 1.25) {
+  const spent = receiptSpend(receipt);
+  if (avg > 0 && spent >= avg * 1.25) {
     out.push({
       id: `curio-bigger-stop-${receipt.id}`,
       angle: "price-context",
       tone: "pattern",
       emoji: "📈",
       title: `A bigger-than-usual ${receipt.merchant} stop`,
-      body: `This one is ${money(receipt.total)}; your earlier visits averaged about ${money(avg)}.`,
+      body: `This one is ${money(spent)}; your earlier visits averaged about ${money(avg)}.`,
     });
-  } else if (avg > 0 && receipt.total <= avg * 0.75) {
+  } else if (avg > 0 && spent <= avg * 0.75) {
     out.push({
       id: `curio-lighter-stop-${receipt.id}`,
       angle: "price-context",
@@ -684,13 +686,14 @@ function patternInsights(
   // 4. priciest pick on a multi-item receipt
   if (receipt.items.length >= 3) {
     const top = priciest(receipt);
-    if (top && top.price >= receipt.total * 0.35) {
+    const spent = receiptSpend(receipt);
+    if (top && top.price >= spent * 0.35) {
       add({
         id: `big-${receipt.id}`,
         tone: "category",
         emoji: top.emoji && top.emoji !== "•" ? top.emoji : "⭐",
         title: `${top.name} was the splurge`,
-        body: `${money(top.price)} of a ${money(receipt.total)} trip.`,
+        body: `${money(top.price)} of a ${money(spent)} trip.`,
       });
     }
   }
@@ -722,7 +725,7 @@ function savingsNudge(
   if (receipt.category === "coffee") {
     const weekCoffee = all
       .filter((r) => r.category === "coffee" && withinDays(r.date, 7, now))
-      .reduce((t, r) => t + r.total, 0);
+      .reduce((t, r) => t + receiptSpend(r), 0);
     if (weekCoffee >= 12) {
       const monthly = Math.round((weekCoffee * 4.3) / 5) * 5;
       return {
@@ -777,8 +780,8 @@ const FUN_FACTS = [
 function funFact(receipt: Receipt, all: Receipt[], now: Date): Insight {
   const spentToday = all
     .filter((r) => withinDays(r.date, 1, now))
-    .reduce((t, r) => t + r.total, 0);
-  if (spentToday > receipt.total + 0.01) {
+    .reduce((t, r) => t + receiptSpend(r), 0);
+  if (spentToday > receiptSpend(receipt) + 0.01) {
     return {
       id: `fact-${receipt.id}`,
       tone: "funfact",
@@ -796,7 +799,7 @@ function cheer(receipt: Receipt): Insight {
     id: `cheer-${receipt.id}`,
     tone: "cheer",
     emoji: "✨",
-    title: `${money(receipt.total)} tracked — nice`,
+    title: `${money(receiptSpend(receipt))} tracked — nice`,
     body: "Small receipt, still counts. That's the whole idea.",
   };
 }
@@ -807,12 +810,13 @@ function cheer(receipt: Receipt): Insight {
 
 export function buildWeeklyReport(all: Receipt[], now = new Date()): WeeklyReport {
   const week = all.filter((r) => withinDays(r.date, 7, now));
-  const total = Math.round(week.reduce((t, r) => t + r.total, 0) * 100) / 100;
+  const total =
+    Math.round(week.reduce((t, r) => t + receiptSpend(r), 0) * 100) / 100;
 
   const byCat = new Map<CategoryId, CategorySlice>();
   for (const r of week) {
     const s = byCat.get(r.category) ?? { category: r.category, total: 0, count: 0 };
-    s.total += r.total;
+    s.total += receiptSpend(r);
     s.count += 1;
     byCat.set(r.category, s);
   }
@@ -826,7 +830,7 @@ export function buildWeeklyReport(all: Receipt[], now = new Date()): WeeklyRepor
     const key = r.merchant.toLowerCase();
     const m = merch.get(key) ?? { merchant: r.merchant, count: 0, total: 0 };
     m.count += 1;
-    m.total += r.total;
+    m.total += receiptSpend(r);
     merch.set(key, m);
   }
   const topMerchant = [...merch.values()].sort(

@@ -19,6 +19,7 @@ import type { Receipt } from "./types";
 
 const LEGACY_RECEIPTS_KEY = "snoopy.receipts.v2";
 const PROFILE_KEY = "snoopy.profile.v1";
+const CLOUD_SCAN_CONSENT_KEY = "snoopy.cloudScanConsent.v1";
 const RECEIPTS_PREFIX = "snoopy.receipts.v3";
 const FRESH_INDEX_PREFIX = "snoopy.freshIndex.v3";
 const GUEST_SCOPE = "guest";
@@ -52,9 +53,11 @@ interface StoreValue {
   isSignedIn: boolean;
   syncState: SyncState;
   syncError: string | null;
+  cloudScanAllowed: boolean;
   /** id of the most recently saved receipt, so the feed can pop it */
   lastAddedId: string | null;
   clearLastAdded: () => void;
+  setCloudScanAllowed: (allowed: boolean) => void;
   signIn: (input: SignInInput) => void;
   signOut: () => void;
   /** build the next simulated scan (does NOT persist until saveReceipt) */
@@ -166,6 +169,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<LocalProfile | null>(null);
   const [syncState, setSyncState] = useState<SyncState>("local");
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [cloudScanAllowed, setCloudScanAllowedState] = useState(false);
   const [lastAddedId, setLastAddedId] = useState<string | null>(null);
   const freshIndex = useRef(0);
   const activeScope = useRef(GUEST_SCOPE);
@@ -180,6 +184,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const scope = scopeFor(profile);
       activeScope.current = scope;
       setCurrentUser(profile);
+      setCloudScanAllowedState(
+        localStorage.getItem(CLOUD_SCAN_CONSENT_KEY) === "yes"
+      );
 
       let stored = readReceipts(scope);
       if (!stored && scope === GUEST_SCOPE) {
@@ -265,8 +272,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }
     } catch {
       setReceipts(DEMO_RECEIPTS);
+      setCloudScanAllowedState(false);
     }
     setReady(true);
+  }, []);
+
+  const setCloudScanAllowed = useCallback((allowed: boolean) => {
+    setCloudScanAllowedState(allowed);
+    try {
+      if (allowed) {
+        localStorage.setItem(CLOUD_SCAN_CONSENT_KEY, "yes");
+      } else {
+        localStorage.removeItem(CLOUD_SCAN_CONSENT_KEY);
+      }
+    } catch {
+      /* private browsing/storage limits should not block the UI preference */
+    }
   }, []);
 
   const persist = useCallback(
@@ -464,8 +485,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       isSignedIn: Boolean(currentUser),
       syncState,
       syncError,
+      cloudScanAllowed,
       lastAddedId,
       clearLastAdded,
+      setCloudScanAllowed,
       signIn,
       signOut,
       nextScan,
@@ -481,8 +504,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       currentUser,
       syncState,
       syncError,
+      cloudScanAllowed,
       lastAddedId,
       clearLastAdded,
+      setCloudScanAllowed,
       signIn,
       signOut,
       nextScan,

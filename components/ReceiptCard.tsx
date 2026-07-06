@@ -26,29 +26,81 @@ function HeartIcon({ active }: { active: boolean }) {
   );
 }
 
+function TrashIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+    >
+      <path
+        d="M9 4.5h6m-8.5 4h11m-8.2 0 .7 10.5h4l.7-10.5M10 11.5v4.5m4-4.5v4.5"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+    >
+      <path
+        d="M5 12h.01M12 12h.01M19 12h.01"
+        stroke="currentColor"
+        strokeWidth="3.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function ReceiptCard({
   receipt,
   index = 0,
   fresh = false,
   onToggleFavorite,
+  onDeleteReceipt,
 }: {
   receipt: Receipt;
   index?: number;
   fresh?: boolean;
   onToggleFavorite?: (id: string) => void;
+  onDeleteReceipt?: (receiptId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const meta = categoryMeta(receipt.category);
 
+  function deleteReceipt() {
+    if (!onDeleteReceipt) return;
+    setMenuOpen(false);
+    const ok = window.confirm(`Delete this ${receipt.merchant} receipt?`);
+    if (!ok) return;
+    onDeleteReceipt(receipt.id);
+  }
+
   useEffect(() => {
-    if (!photoOpen) return;
+    if (!photoOpen && !menuOpen) return;
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") setPhotoOpen(false);
+      if (event.key === "Escape") setMenuOpen(false);
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [photoOpen]);
+  }, [photoOpen, menuOpen]);
 
   return (
     <>
@@ -62,7 +114,7 @@ export function ReceiptCard({
           stiffness: 300,
           damping: 26,
         }}
-        className="overflow-hidden rounded-3xl bg-paper shadow-soft"
+        className="relative overflow-visible rounded-3xl bg-paper shadow-soft"
         style={{ border: `1px solid ${meta.color}1f` }}
       >
         <div className="flex items-center gap-2 p-3.5">
@@ -100,6 +152,39 @@ export function ReceiptCard({
 
           {onToggleFavorite ? (
             <FavoriteButton receipt={receipt} onToggleFavorite={onToggleFavorite} />
+          ) : null}
+
+          {onDeleteReceipt ? (
+            <div className="relative">
+              <button
+                type="button"
+                aria-label={`Open menu for ${receipt.merchant} receipt`}
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((value) => !value)}
+                className="grid size-10 shrink-0 place-items-center rounded-full bg-cream text-ink-faint transition hover:text-ink-soft active:scale-95"
+              >
+                <MoreIcon />
+              </button>
+
+              {menuOpen ? (
+                <motion.div
+                  role="menu"
+                  initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  className="absolute right-0 top-12 z-30 w-44 overflow-hidden rounded-2xl bg-paper p-1.5 shadow-lift"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={deleteReceipt}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs font-semibold text-coral transition active:bg-coral/10"
+                  >
+                    <TrashIcon />
+                    <span className="truncate">Delete receipt</span>
+                  </button>
+                </motion.div>
+              ) : null}
+            </div>
           ) : null}
         </div>
 
@@ -143,7 +228,7 @@ export function ReceiptCard({
                   className="rounded-2xl px-3.5 py-2"
                   style={{ background: meta.soft }}
                 >
-                  {receipt.items.map((it, i) => (
+                  {receipt.items.length ? receipt.items.map((it, i) => (
                     <div
                       key={i}
                       className="flex items-center gap-2 py-1.5 text-[13px]"
@@ -163,8 +248,40 @@ export function ReceiptCard({
                         {money(it.price)}
                       </span>
                     </div>
-                  ))}
+                  )) : (
+                    <p className="py-1.5 text-[13px] text-ink-soft">
+                      No line items saved.
+                    </p>
+                  )}
                 </div>
+
+                {receipt.revealedInsights?.length ? (
+                  <div className="mt-2.5 rounded-2xl bg-cream px-3.5 py-3">
+                    <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint">
+                      Snoopy found
+                    </p>
+                    <div className="space-y-2">
+                      {receipt.revealedInsights.map((insight) => (
+                        <div
+                          key={insight.id}
+                          className="flex items-start gap-2 text-[13px] leading-snug"
+                        >
+                          <span className="mt-0.5 w-5 shrink-0 text-center">
+                            {insight.emoji}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="font-semibold text-ink">
+                              {insight.title}
+                            </span>
+                            {insight.body ? (
+                              <span className="text-ink-soft"> - {insight.body}</span>
+                            ) : null}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </motion.div>
           )}

@@ -9,12 +9,13 @@ function at(now: number, daysAgo: number, hour: number, min = 0): string {
   return d.toISOString();
 }
 
-function items(raw: [string, number, number?][]): LineItem[] {
+function items(raw: [string, number, number?][], isFood: boolean): LineItem[] {
   return raw.map(([name, price, qty]) => ({
     name,
     price,
     qty,
     emoji: guessEmoji(name),
+    isFood,
   }));
 }
 
@@ -41,7 +42,7 @@ export function buildSeedReceipts(now = Date.now()): Receipt[] {
       daysAgo: 0,
       hour: 8,
       min: 12,
-      items: items([["Caffè Latte", 5.25], ["Almond Croissant", 4.5]]),
+      items: items([["Caffè Latte", 5.25], ["Almond Croissant", 4.5]], true),
       nugget: "Cup #3 this week ☕",
     },
     {
@@ -57,7 +58,7 @@ export function buildSeedReceipts(now = Date.now()): Receipt[] {
         ["Dark Chocolate", 2.29],
         ["Mixed Greens", 3.49],
         ["Chicken Thighs", 7.99],
-      ]),
+      ], true),
       nugget: "A tidy little haul 🛒",
     },
     {
@@ -66,7 +67,7 @@ export function buildSeedReceipts(now = Date.now()): Receipt[] {
       daysAgo: 1,
       hour: 9,
       min: 5,
-      items: items([["Mint Mojito Coffee", 5.75]]),
+      items: items([["Mint Mojito Coffee", 5.75]], true),
       nugget: "Mint mojito again? Bold. 🌿",
     },
     {
@@ -75,7 +76,7 @@ export function buildSeedReceipts(now = Date.now()): Receipt[] {
       daysAgo: 1,
       hour: 12,
       min: 30,
-      items: items([["Harvest Bowl", 13.95], ["Sparkling Water", 2.5]]),
+      items: items([["Harvest Bowl", 13.95], ["Sparkling Water", 2.5]], true),
       nugget: "Greens streak continues 🥗",
     },
     {
@@ -84,7 +85,7 @@ export function buildSeedReceipts(now = Date.now()): Receipt[] {
       daysAgo: 2,
       hour: 7,
       min: 50,
-      items: items([["Unleaded Fuel", 48.3]]),
+      items: items([["Unleaded Fuel", 48.3]], false),
       nugget: "Tank's full — set for the week ⛽",
     },
     {
@@ -97,7 +98,7 @@ export function buildSeedReceipts(now = Date.now()): Receipt[] {
         ["Toothpaste", 4.49],
         ["Vitamin D", 12.99],
         ["Dental Floss", 3.29],
-      ]),
+      ], false),
       nugget: "Future-you says thanks 💊",
     },
     {
@@ -106,7 +107,7 @@ export function buildSeedReceipts(now = Date.now()): Receipt[] {
       daysAgo: 4,
       hour: 8,
       min: 20,
-      items: items([["Cappuccino", 4.75]]),
+      items: items([["Cappuccino", 4.75]], true),
       nugget: "You + Blue Bottle = a thing ☕",
     },
     {
@@ -121,7 +122,7 @@ export function buildSeedReceipts(now = Date.now()): Receipt[] {
         ["Avocado", 2.5],
         ["Sourdough Loaf", 4.99],
         ["Kale", 2.99],
-      ]),
+      ], true),
       nugget: "Bananas again 🍌",
     },
     {
@@ -129,7 +130,7 @@ export function buildSeedReceipts(now = Date.now()): Receipt[] {
       category: "dining",
       daysAgo: 6,
       hour: 13,
-      items: items([["Chicken Burrito", 10.2], ["Chips & Guac", 4.45]]),
+      items: items([["Chicken Burrito", 10.2], ["Chips & Guac", 4.45]], true),
       nugget: "Guac was worth it 🥑",
     },
     {
@@ -142,7 +143,7 @@ export function buildSeedReceipts(now = Date.now()): Receipt[] {
         ["Soy Candle", 12.99],
         ["Wool Socks", 8.99],
         ["Notebook", 4.99],
-      ]),
+      ], false),
       nugget: "A candle snuck into the cart 🕯️",
     },
   ];
@@ -170,13 +171,13 @@ export const FRESH_TEMPLATES: FreshTemplate[] = [
   {
     merchant: "Starbucks",
     category: "coffee",
-    items: items([["Grande Oat Latte", 5.65]]),
+    items: items([["Grande Oat Latte", 5.65]], true),
   },
   {
     // deliberately boring — proves even this earns a delightful reveal
     merchant: "7-Eleven",
     category: "other",
-    items: items([["Bottled Water", 1.89]]),
+    items: items([["Bottled Water", 1.89]], true),
   },
   {
     merchant: "Trader Joe's",
@@ -188,12 +189,12 @@ export const FRESH_TEMPLATES: FreshTemplate[] = [
       ["Cherry Tomatoes", 3.49],
       ["Dark Chocolate", 2.29],
       ["Sparkling Water", 3.99],
-    ]),
+    ], true),
   },
   {
     merchant: "Uber",
     category: "transport",
-    items: items([["Trip • downtown", 14.2]]),
+    items: items([["Trip • downtown", 14.2]], false),
   },
   {
     merchant: "Shake Shack",
@@ -202,12 +203,12 @@ export const FRESH_TEMPLATES: FreshTemplate[] = [
       ["ShackBurger", 6.19],
       ["Crinkle Fries", 3.99],
       ["Vanilla Shake", 5.59],
-    ]),
+    ], true),
   },
   {
     merchant: "CVS Pharmacy",
     category: "health",
-    items: items([["Sunscreen SPF 50", 11.99], ["Lip Balm", 3.49]]),
+    items: items([["Sunscreen SPF 50", 11.99], ["Lip Balm", 3.49]], false),
   },
 ];
 

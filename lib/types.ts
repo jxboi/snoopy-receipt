@@ -13,6 +13,8 @@ export interface LineItem {
   price: number;
   qty?: number;
   emoji?: string;
+  /** True when the parser/fixture identifies this as food/drink for bill splitting. */
+  isFood?: boolean;
 }
 
 export interface Receipt {
@@ -56,6 +58,17 @@ export interface Receipt {
    * history can show the same finds later instead of recomputing a new set.
    */
   revealedInsights?: Insight[];
+  /**
+   * User-applied split bill adjustment. `total` stays as the printed receipt
+   * total; this value is the user's share for spend totals and reports.
+   */
+  splitBill?: {
+    amount: number;
+    originalTotal: number;
+    dishCount: number;
+    method: "even";
+    appliedAt: string;
+  };
 }
 
 export type InsightTone =

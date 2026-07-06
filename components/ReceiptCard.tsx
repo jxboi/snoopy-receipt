@@ -1,9 +1,11 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { categoryMeta } from "@/lib/categories";
 import { money, relativeDay, timeOfDay } from "@/lib/format";
+import { buildMealSplit, type MealSplit } from "@/lib/mealSplit";
+import { hasSplitBill, receiptSpend } from "@/lib/spend";
 import type { Receipt } from "@/lib/types";
 
 function HeartIcon({ active }: { active: boolean }) {
@@ -66,23 +68,71 @@ function MoreIcon() {
   );
 }
 
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      className={`transition-transform ${open ? "rotate-180" : ""}`}
+    >
+      <path
+        d="m6 9 6 6 6-6"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function SplitIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+    >
+      <path
+        d="M12 5v14M5 8h5M5 16h5M14 8h5M14 16h5"
+        stroke="currentColor"
+        strokeWidth="2.1"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function ReceiptCard({
   receipt,
   index = 0,
   fresh = false,
+  enableMealSplit = false,
   onToggleFavorite,
+  onSetSplitBill,
   onDeleteReceipt,
 }: {
   receipt: Receipt;
   index?: number;
   fresh?: boolean;
+  enableMealSplit?: boolean;
   onToggleFavorite?: (id: string) => void;
+  onSetSplitBill?: (id: string, splitBill: Receipt["splitBill"]) => void;
   onDeleteReceipt?: (receiptId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [splitOpen, setSplitOpen] = useState(false);
   const meta = categoryMeta(receipt.category);
+  const mealSplit = enableMealSplit ? buildMealSplit(receipt) : null;
+  const splitApplied = hasSplitBill(receipt);
+  const displayTotal = receiptSpend(receipt);
 
   function deleteReceipt() {
     if (!onDeleteReceipt) return;
@@ -101,6 +151,10 @@ export function ReceiptCard({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [photoOpen, menuOpen]);
+
+  useEffect(() => {
+    if (!open) setSplitOpen(false);
+  }, [open]);
 
   return (
     <>
@@ -142,10 +196,12 @@ export function ReceiptCard({
 
             <div className="shrink-0 text-right">
               <p className="font-display text-[15px] font-semibold text-ink tabular-nums">
-                {money(receipt.total, receipt.currency)}
+                {money(displayTotal, receipt.currency)}
               </p>
               <p className="mt-0.5 text-[11px] text-ink-faint">
-                {relativeDay(receipt.date)} · {timeOfDay(receipt.date)}
+                {splitApplied
+                  ? `Split bill · was ${money(receipt.total, receipt.currency)}`
+                  : `${relativeDay(receipt.date)} · ${timeOfDay(receipt.date)}`}
               </p>
             </div>
           </button>
@@ -254,6 +310,16 @@ export function ReceiptCard({
                     </p>
                   )}
                 </div>
+
+                {mealSplit ? (
+                  <MealSplitPanel
+                    open={splitOpen}
+                    receipt={receipt}
+                    split={mealSplit}
+                    onSetSplitBill={onSetSplitBill}
+                    onToggle={() => setSplitOpen((value) => !value)}
+                  />
+                ) : null}
 
                 {receipt.revealedInsights?.length ? (
                   <div className="mt-2.5 rounded-2xl bg-cream px-3.5 py-3">
@@ -377,5 +443,170 @@ function FavoriteButton({
     >
       <HeartIcon active={active} />
     </button>
+  );
+}
+
+function MealSplitPanel({
+  open,
+  receipt,
+  split,
+  onSetSplitBill,
+  onToggle,
+}: {
+  open: boolean;
+  receipt: Receipt;
+  split: MealSplit;
+  onSetSplitBill?: (id: string, splitBill: Receipt["splitBill"]) => void;
+  onToggle: () => void;
+}) {
+  const currency = receipt.currency;
+  const remainder = split.receiptRemainder;
+  const hasRemainder = Math.abs(remainder) >= 0.01;
+  const panelRef = useRef<HTMLDivElement>(null);
+  const splitApplied = hasSplitBill(receipt);
+
+  function applySplitBill() {
+    onSetSplitBill?.(receipt.id, {
+      amount: Math.round(split.evenShare * 100) / 100,
+      originalTotal: receipt.total,
+      dishCount: split.dishCount,
+      method: "even",
+      appliedAt: new Date().toISOString(),
+    });
+  }
+
+  function clearSplitBill() {
+    onSetSplitBill?.(receipt.id, undefined);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+
+    const timer = window.setTimeout(() => {
+      panelRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 80);
+
+    return () => window.clearTimeout(timer);
+  }, [open]);
+
+  return (
+    <div ref={panelRef} className="mt-2.5 overflow-hidden rounded-2xl bg-cream">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={onToggle}
+        className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition active:scale-[0.99]"
+      >
+        <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-paper text-coral">
+          <SplitIcon />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold text-ink">
+            {splitApplied ? "Split bill applied" : "Split this meal"}
+          </span>
+          <span className="block truncate text-xs text-ink-soft">
+            {split.dishCount} food/drink items spotted -{" "}
+            {money(split.evenShare, currency)} each
+          </span>
+        </span>
+        <span className="shrink-0 text-ink-faint">
+          <ChevronIcon open={open} />
+        </span>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.24, ease: "easeInOut" }}
+          >
+            <div className="border-t border-ink/5 px-3.5 pb-3.5 pt-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-2xl bg-paper px-3 py-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint">
+                    Even split
+                  </p>
+                  <p className="mt-1 font-display text-lg font-semibold text-ink tabular-nums">
+                    {money(split.evenShare, currency)}
+                  </p>
+                  <p className="text-[11px] text-ink-soft">per food/drink item</p>
+                </div>
+                <div className="rounded-2xl bg-paper px-3 py-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint">
+                    Shared bits
+                  </p>
+                  <p className="mt-1 font-display text-lg font-semibold text-ink tabular-nums">
+                    {hasRemainder
+                      ? money(Math.abs(remainder), currency)
+                      : money(0, currency)}
+                  </p>
+                  <p className="truncate text-[11px] text-ink-soft">
+                    {hasRemainder
+                      ? remainder > 0
+                        ? "sprinkled across"
+                        : "discount folded in"
+                      : "neatly matched"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3 rounded-2xl bg-paper px-3 py-2">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint">
+                  By food/drink item
+                </p>
+                {split.dishes.map((dish, index) => (
+                  <div
+                    key={`${dish.item.name}-${index}`}
+                    className="flex items-center gap-2 py-1.5 text-[13px]"
+                    style={{
+                      borderTop:
+                        index === 0
+                          ? "none"
+                          : "1px solid rgb(31 31 31 / 0.06)",
+                    }}
+                  >
+                    <span className="w-5 shrink-0 text-center">
+                      {dish.item.emoji}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-ink">
+                      {dish.item.name}
+                      {dish.qty > 1 ? (
+                        <span className="text-ink-faint"> x{dish.qty}</span>
+                      ) : null}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-ink-soft">
+                      {dish.qty > 1
+                        ? `${money(dish.shareEach, currency)} ea`
+                        : money(dish.shareTotal, currency)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {onSetSplitBill ? (
+                <button
+                  type="button"
+                  onClick={splitApplied ? clearSplitBill : applySplitBill}
+                  className={`mt-3 w-full rounded-2xl px-4 py-3 text-sm font-semibold shadow-soft transition active:scale-[0.99] ${
+                    splitApplied
+                      ? "bg-ink/5 text-ink-soft"
+                      : "bg-coral text-white"
+                  }`}
+                >
+                  {splitApplied
+                    ? `Count full ${money(receipt.total, currency)} instead`
+                    : `Use ${money(split.evenShare, currency)} as my spend`}
+                </button>
+              ) : null}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
   );
 }

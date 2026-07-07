@@ -19,7 +19,8 @@ import type { Receipt } from "./types";
 
 const LEGACY_RECEIPTS_KEY = "snoopy.receipts.v2";
 const PROFILE_KEY = "snoopy.profile.v1";
-const CLOUD_SCAN_CONSENT_KEY = "snoopy.cloudScanConsent.v1";
+const LEGACY_CLOUD_SCAN_CONSENT_KEY = "snoopy.cloudScanConsent.v1";
+const CLOUD_SCAN_CONSENT_PREFIX = "snoopy.cloudScanConsent.v2";
 const RECEIPTS_PREFIX = "snoopy.receipts.v3";
 const FRESH_INDEX_PREFIX = "snoopy.freshIndex.v3";
 const GUEST_SCOPE = "guest";
@@ -90,6 +91,36 @@ function receiptKey(scope: string): string {
 
 function freshIndexKey(scope: string): string {
   return `${FRESH_INDEX_PREFIX}.${scope}`;
+}
+
+function cloudScanConsentKey(scope: string): string {
+  return `${CLOUD_SCAN_CONSENT_PREFIX}.${scope}`;
+}
+
+function readCloudScanAllowed(scope: string, migrateLegacy = false): boolean {
+  try {
+    const key = cloudScanConsentKey(scope);
+    const scoped = localStorage.getItem(key);
+    if (scoped !== null) return scoped === "yes";
+
+    const legacy = localStorage.getItem(LEGACY_CLOUD_SCAN_CONSENT_KEY);
+    if (migrateLegacy && legacy === "yes") {
+      localStorage.setItem(key, "yes");
+      localStorage.removeItem(LEGACY_CLOUD_SCAN_CONSENT_KEY);
+      return true;
+    }
+  } catch {
+    /* private browsing/storage limits mean the preference starts off */
+  }
+  return false;
+}
+
+function writeCloudScanAllowed(scope: string, allowed: boolean) {
+  if (allowed) {
+    localStorage.setItem(cloudScanConsentKey(scope), "yes");
+  } else {
+    localStorage.removeItem(cloudScanConsentKey(scope));
+  }
 }
 
 function readReceipts(scope: string): Receipt[] | null {
@@ -185,9 +216,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const scope = scopeFor(profile);
       activeScope.current = scope;
       setCurrentUser(profile);
-      setCloudScanAllowedState(
-        localStorage.getItem(CLOUD_SCAN_CONSENT_KEY) === "yes"
-      );
+      setCloudScanAllowedState(readCloudScanAllowed(scope, true));
 
       let stored = readReceipts(scope);
       if (!stored && scope === GUEST_SCOPE) {
@@ -241,6 +270,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
             activeScope.current = nextScope;
             setCurrentUser(sessionProfile);
+            setCloudScanAllowedState(readCloudScanAllowed(nextScope));
             setReceipts(sortNewest(scopedReceipts));
             setSyncState("syncing");
             fetchRemoteReceipts()
@@ -281,11 +311,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const setCloudScanAllowed = useCallback((allowed: boolean) => {
     setCloudScanAllowedState(allowed);
     try {
-      if (allowed) {
-        localStorage.setItem(CLOUD_SCAN_CONSENT_KEY, "yes");
-      } else {
-        localStorage.removeItem(CLOUD_SCAN_CONSENT_KEY);
-      }
+      writeCloudScanAllowed(activeScope.current, allowed);
     } catch {
       /* private browsing/storage limits should not block the UI preference */
     }
@@ -401,6 +427,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }
 
       setCurrentUser(profile);
+      setCloudScanAllowedState(readCloudScanAllowed(nextScope));
       setLastAddedId(null);
       setSyncState("syncing");
       setSyncError(null);
@@ -446,6 +473,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setReceipts(DEMO_RECEIPTS);
     }
     setCurrentUser(null);
+    setCloudScanAllowedState(readCloudScanAllowed(GUEST_SCOPE));
     setSyncState("local");
     setSyncError(null);
     setLastAddedId(null);

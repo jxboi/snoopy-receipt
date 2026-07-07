@@ -7,11 +7,17 @@ import { CountUp } from "@/components/CountUp";
 import { InsightCard } from "@/components/InsightCard";
 import { Mascot } from "@/components/Mascot";
 import { Sparkles } from "@/components/Sparkles";
+import {
+  configuredExternalProvider,
+  providerOption,
+  readAiScanSettings,
+} from "@/lib/aiScanSettings";
 import { categoryMeta } from "@/lib/categories";
 import { findDuplicate } from "@/lib/dedupe";
 import { money, relativeDay, timeOfDay } from "@/lib/format";
 import { revealInsights } from "@/lib/insights";
 import { parseReceipt } from "@/lib/parseReceipt";
+import { hasSplitBill, receiptSpend } from "@/lib/spend";
 import { useStore } from "@/lib/store";
 import type { Receipt } from "@/lib/types";
 
@@ -188,6 +194,7 @@ export default function ScanPage() {
     setCloudScanAllowed,
     nextScan,
     saveReceipt,
+    setReceiptSplitBill,
   } = useStore();
 
   const [phase, setPhase] = useState<Phase>("idle");
@@ -196,8 +203,10 @@ export default function ScanPage() {
   const [imageAttachment, setImageAttachment] =
     useState<ReceiptImageAttachment | null>(null);
   const [autoSavedId, setAutoSavedId] = useState<string | null>(null);
+  const [splitDialogOpen, setSplitDialogOpen] = useState(false);
   const [pendingPhotoSource, setPendingPhotoSource] =
     useState<PhotoSource | null>(null);
+  const [privateScanLabel, setPrivateScanLabel] = useState<string | null>(null);
   const [line, setLine] = useState(0);
   const cameraRef = useRef<HTMLInputElement>(null);
   const photosRef = useRef<HTMLInputElement>(null);
@@ -217,6 +226,10 @@ export default function ScanPage() {
   const duplicate = useMemo(
     () => (scanned ? findDuplicate(scanned, receipts) : null),
     [scanned, receipts]
+  );
+  const foodDrinkItemCount = useMemo(
+    () => scanned?.items.filter((item) => item.isFood).length ?? 0,
+    [scanned]
   );
 
   // clear any pending timers only when the page unmounts — NOT on every photo
@@ -240,7 +253,20 @@ export default function ScanPage() {
     return () => clearInterval(id);
   }, [phase]);
 
+  function refreshPrivateScanLabel(): string | null {
+    const settings = readAiScanSettings();
+    const provider = configuredExternalProvider(settings);
+    const label = provider ? providerOption(provider).shortLabel : null;
+    setPrivateScanLabel(label);
+    return label;
+  }
+
+  function hasPrivateScanProvider(): boolean {
+    return Boolean(configuredExternalProvider(readAiScanSettings()));
+  }
+
   function pickReceiptPhoto(source: PhotoSource) {
+    refreshPrivateScanLabel();
     if (!cloudScanAllowed) {
       setPendingPhotoSource(source);
       return;
@@ -267,6 +293,7 @@ export default function ScanPage() {
     setImageAttachment(null);
     setAutoSavedId(null);
     setPhase("sniffing");
+    const privateCloudScan = file && cloudScanAllowed && hasPrivateScanProvider();
 
     // A real photo goes to Claude Vision (/api/scan); anything else — the
     // "snoop a sample" path — uses the mock. Either way the reveal waits for a
@@ -279,9 +306,10 @@ export default function ScanPage() {
         ? parseReceipt(file).catch(() => nextScan()) // graceful fallback to mock
         : Promise.resolve(nextScan())
       : Promise.resolve(nextScan());
-    const imageReady: Promise<PreparedReceiptImage | null> = file && cloudScanAllowed
-      ? prepareReceiptImage(file)
-      : Promise.resolve(null);
+    const imageReady: Promise<PreparedReceiptImage | null> =
+      file && cloudScanAllowed && !privateCloudScan
+        ? prepareReceiptImage(file)
+        : Promise.resolve(null);
 
     Promise.all([parse, imageReady, minBeat]).then(async ([r, image]) => {
       if (scanRun.current !== run) return; // superseded by a reset/new scan
@@ -334,6 +362,37 @@ export default function ScanPage() {
     router.push("/history");
   }
 
+  function applySplitBill(participantCount: number) {
+    if (!scanned) return;
+    const amount = Math.round((scanned.total / participantCount) * 100) / 100;
+    const splitBill: Receipt["splitBill"] = {
+      amount,
+      originalTotal: scanned.total,
+      participantCount,
+      foodDrinkItemCount,
+      method: "people",
+      appliedAt: new Date().toISOString(),
+    };
+    setScanned((receipt) => (receipt ? { ...receipt, splitBill } : receipt));
+    if (autoSavedId === scanned.id) {
+      setReceiptSplitBill(scanned.id, splitBill);
+    }
+    setSplitDialogOpen(false);
+  }
+
+  function clearSplitBill() {
+    if (!scanned) return;
+    setScanned((receipt) => {
+      if (!receipt) return receipt;
+      const { splitBill: _splitBill, ...next } = receipt;
+      return next;
+    });
+    if (autoSavedId === scanned.id) {
+      setReceiptSplitBill(scanned.id, undefined);
+    }
+    setSplitDialogOpen(false);
+  }
+
   function reset() {
     scanRun.current++;
     if (photo) URL.revokeObjectURL(photo);
@@ -346,6 +405,8 @@ export default function ScanPage() {
 
   const meta = scanned ? categoryMeta(scanned.category) : null;
   const isAutoSaved = Boolean(scanned && autoSavedId === scanned.id);
+  const canSplitBill = Boolean(scanned && foodDrinkItemCount > 0);
+  const displayTotal = scanned ? receiptSpend(scanned) : 0;
 
   return (
     <div className="flex min-h-[80dvh] flex-col">
@@ -431,9 +492,9 @@ export default function ScanPage() {
                       Send this receipt to cloud scan?
                     </p>
                     <p className="mt-1 text-[13px] leading-snug text-ink-soft">
-                      To read a real photo, Snoopy sends a compressed image to our
-                      cloud AI parser. If you&apos;re signed in, the image can also
-                      be saved privately with your receipt history.
+                      {privateScanLabel
+                        ? `To read a real photo, Snoopy sends a compressed image straight to ${privateScanLabel} with the key from your profile. Snoopy does not receive the photo for parsing.`
+                        : "To read a real photo, Snoopy sends a compressed image to our cloud AI parser. If you're signed in, the image can also be saved privately with your receipt history."}
                     </p>
                     <div className="mt-3 flex gap-2">
                       <button
@@ -448,7 +509,7 @@ export default function ScanPage() {
                         onClick={allowCloudScan}
                         className="flex-[1.15] rounded-2xl bg-ink py-3 text-sm font-semibold text-white active:scale-[0.98] transition-transform"
                       >
-                        Allow cloud scan
+                        {privateScanLabel ? "Use private scan" : "Allow cloud scan"}
                       </button>
                     </div>
                   </motion.div>
@@ -464,7 +525,7 @@ export default function ScanPage() {
             </button>
 
             <p className="mt-4 text-center text-xs text-ink-faint">
-              Prototype mode - receipt photos are compressed before any upload.
+              Receipt photos are compressed before any upload.
             </p>
           </motion.div>
         )}
@@ -608,11 +669,18 @@ export default function ScanPage() {
                   className="receipt-edge flex items-center justify-between px-5 py-4"
                   style={{ background: meta.soft }}
                 >
-                  <span className="font-display text-sm font-semibold text-ink">
-                    Total
-                  </span>
+                  <div>
+                    <span className="font-display text-sm font-semibold text-ink">
+                      {hasSplitBill(scanned) ? "Your share" : "Total"}
+                    </span>
+                    {hasSplitBill(scanned) ? (
+                      <p className="mt-0.5 text-[11px] text-ink-faint">
+                        full bill {money(scanned.total, scanned.currency)}
+                      </p>
+                    ) : null}
+                  </div>
                   <CountUp
-                    value={scanned.total}
+                    value={displayTotal}
                     prefix="$"
                     className="font-display text-2xl font-semibold text-ink tabular-nums"
                   />
@@ -646,31 +714,54 @@ export default function ScanPage() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.6 + insights.length * 0.12 }}
-              className="mt-1 flex gap-3"
+              className="mt-1 flex flex-col gap-3"
             >
-              <button
-                onClick={reset}
-                className="flex-1 rounded-2xl bg-ink/5 py-3.5 text-sm font-semibold text-ink active:scale-[0.98] transition-transform"
-              >
-                Snoop another
-              </button>
-              <button
-                onClick={isAutoSaved ? () => router.push("/history") : save}
-                className="flex-[1.4] rounded-2xl py-3.5 text-sm font-semibold text-white shadow-lift active:scale-[0.98] transition-transform"
-                style={{
-                  background:
-                    "linear-gradient(150deg, var(--color-tangerine), var(--color-coral) 55%, var(--color-coral-deep))",
-                }}
-              >
-                {isAutoSaved
-                  ? "View History"
-                  : duplicate
-                    ? "Save anyway"
-                    : "Save to History"}
-              </button>
+              {canSplitBill ? (
+                <button
+                  type="button"
+                  onClick={() => setSplitDialogOpen(true)}
+                  className="rounded-2xl bg-paper py-3.5 text-sm font-semibold text-ink shadow-soft ring-1 ring-ink/5 active:scale-[0.98] transition-transform"
+                >
+                  {hasSplitBill(scanned) ? "Edit split" : "Split bill"}
+                </button>
+              ) : null}
+              <div className="flex gap-3">
+                <button
+                  onClick={reset}
+                  className="flex-1 rounded-2xl bg-ink/5 py-3.5 text-sm font-semibold text-ink active:scale-[0.98] transition-transform"
+                >
+                  Snoop another
+                </button>
+                <button
+                  onClick={isAutoSaved ? () => router.push("/history") : save}
+                  className="flex-[1.4] rounded-2xl py-3.5 text-sm font-semibold text-white shadow-lift active:scale-[0.98] transition-transform"
+                  style={{
+                    background:
+                      "linear-gradient(150deg, var(--color-tangerine), var(--color-coral) 55%, var(--color-coral-deep))",
+                  }}
+                >
+                  {isAutoSaved
+                    ? "View History"
+                    : duplicate
+                      ? "Save anyway"
+                      : "Save to History"}
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {splitDialogOpen && scanned ? (
+          <ScanSplitDialog
+            foodDrinkItemCount={foodDrinkItemCount}
+            receipt={scanned}
+            onApply={applySplitBill}
+            onClear={clearSplitBill}
+            onClose={() => setSplitDialogOpen(false)}
+          />
+        ) : null}
       </AnimatePresence>
     </div>
   );
@@ -716,5 +807,158 @@ function ScanPreview({
         />
       )}
     </div>
+  );
+}
+
+function ScanSplitDialog({
+  foodDrinkItemCount,
+  receipt,
+  onApply,
+  onClear,
+  onClose,
+}: {
+  foodDrinkItemCount: number;
+  receipt: Receipt;
+  onApply: (participantCount: number) => void;
+  onClear: () => void;
+  onClose: () => void;
+}) {
+  const [pax, setPax] = useState(
+    String(receipt.splitBill?.participantCount ?? 2)
+  );
+  const paxNumber = Math.max(2, Math.min(99, Math.floor(Number(pax) || 2)));
+  const perPerson = Math.round((receipt.total / paxNumber) * 100) / 100;
+  const splitApplied = hasSplitBill(receipt);
+
+  function stepPax(delta: number) {
+    const next = Math.max(2, Math.min(99, paxNumber + delta));
+    setPax(String(next));
+  }
+
+  return (
+    <motion.div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Split ${receipt.merchant} bill`}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[75] flex items-end bg-ink/35 p-4 pb-safe backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ y: 18, scale: 0.98 }}
+        animate={{ y: 0, scale: 1 }}
+        exit={{ y: 12, scale: 0.98 }}
+        className="w-full rounded-[28px] bg-paper p-5 shadow-lift"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-display text-lg font-semibold text-ink">
+              Split bill
+            </p>
+            <p className="mt-0.5 text-sm text-ink-soft">
+              {foodDrinkItemCount} food/drink item
+              {foodDrinkItemCount === 1 ? "" : "s"} on this receipt
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="Close split bill"
+            onClick={onClose}
+            className="grid size-10 shrink-0 place-items-center rounded-full bg-cream text-ink-faint transition active:scale-95"
+          >
+            <svg
+              aria-hidden="true"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+            >
+              <path
+                d="m6.5 6.5 11 11M17.5 6.5l-11 11"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        </div>
+
+        <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-2xl bg-cream p-2">
+          <button
+            type="button"
+            aria-label="Decrease pax"
+            onClick={() => stepPax(-1)}
+            className="grid h-11 place-items-center rounded-xl bg-paper text-xl font-semibold text-ink-soft transition active:scale-95"
+          >
+            -
+          </button>
+          <label className="flex min-w-0 flex-col items-center px-2">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint">
+              Pax
+            </span>
+            <input
+              inputMode="numeric"
+              min={2}
+              max={99}
+              value={pax}
+              onChange={(event) =>
+                setPax(event.currentTarget.value.replace(/\D/g, "").slice(0, 2))
+              }
+              onBlur={() => setPax(String(paxNumber))}
+              className="mt-0.5 w-16 bg-transparent text-center font-display text-2xl font-semibold text-ink tabular-nums outline-none"
+            />
+          </label>
+          <button
+            type="button"
+            aria-label="Increase pax"
+            onClick={() => stepPax(1)}
+            className="grid h-11 place-items-center rounded-xl bg-paper text-xl font-semibold text-ink-soft transition active:scale-95"
+          >
+            +
+          </button>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="rounded-2xl bg-cream px-3 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint">
+              Total bill
+            </p>
+            <p className="mt-1 font-display text-lg font-semibold text-ink tabular-nums">
+              {money(receipt.total, receipt.currency)}
+            </p>
+          </div>
+          <div className="rounded-2xl bg-coral/10 px-3 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-coral">
+              Each pays
+            </p>
+            <p className="mt-1 font-display text-lg font-semibold text-ink tabular-nums">
+              {money(perPerson, receipt.currency)}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 flex gap-2">
+          {splitApplied ? (
+            <button
+              type="button"
+              onClick={onClear}
+              className="flex-1 rounded-2xl bg-ink/5 px-4 py-3 text-sm font-semibold text-ink-soft transition active:scale-[0.99]"
+            >
+              Count full bill
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => onApply(paxNumber)}
+            className="flex-[1.4] rounded-2xl bg-coral px-4 py-3 text-sm font-semibold text-white shadow-soft transition active:scale-[0.99]"
+          >
+            Confirm
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }

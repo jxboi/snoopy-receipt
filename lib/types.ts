@@ -65,8 +65,9 @@ export interface Receipt {
   splitBill?: {
     amount: number;
     originalTotal: number;
-    dishCount: number;
-    method: "even";
+    participantCount?: number;
+    foodDrinkItemCount?: number;
+    method: "even" | "people";
     appliedAt: string;
   };
 }

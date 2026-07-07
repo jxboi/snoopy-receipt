@@ -2,8 +2,15 @@
 
 import { motion } from "motion/react";
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Mascot } from "@/components/Mascot";
+import {
+  DEFAULT_AI_SCAN_SETTINGS,
+  configuredExternalProvider,
+  providerOption,
+  readAiScanSettings,
+  type AiScanSettings,
+} from "@/lib/aiScanSettings";
 import { money } from "@/lib/format";
 import { buildWeeklyReport } from "@/lib/insights";
 import { useStore } from "@/lib/store";
@@ -24,6 +31,13 @@ export default function ProfilePage() {
   } = useStore();
   const report = useMemo(() => buildWeeklyReport(receipts), [receipts]);
   const showDemoReset = process.env.NODE_ENV !== "production";
+  const [aiSettings, setAiSettings] = useState<AiScanSettings>(
+    DEFAULT_AI_SCAN_SETTINGS
+  );
+
+  useEffect(() => {
+    setAiSettings(readAiScanSettings());
+  }, []);
 
   function exportData() {
     const payload = {
@@ -130,6 +144,7 @@ export default function ProfilePage() {
           <section className="flex flex-col gap-2.5">
             <CloudScanSetting
               checked={cloudScanAllowed}
+              settings={aiSettings}
               onChange={setCloudScanAllowed}
             />
             <ActionButton onClick={exportData} label="Export my data" />
@@ -140,13 +155,7 @@ export default function ProfilePage() {
           </section>
         </>
       ) : (
-        <>
-          <SignedOutCard receiptCount={receipts.length} />
-          <CloudScanSetting
-            checked={cloudScanAllowed}
-            onChange={setCloudScanAllowed}
-          />
-        </>
+        <SignedOutCard receiptCount={receipts.length} />
       )}
     </div>
   );
@@ -154,11 +163,21 @@ export default function ProfilePage() {
 
 function CloudScanSetting({
   checked,
+  settings,
   onChange,
 }: {
   checked: boolean;
+  settings: AiScanSettings;
   onChange: (checked: boolean) => void;
 }) {
+  const provider = configuredExternalProvider(settings);
+  const providerReady = provider ? providerOption(provider) : null;
+  const modeLabel = checked
+    ? providerReady
+      ? `Private scan · ${providerReady.shortLabel}`
+      : "Snoopy cloud"
+    : "Off";
+
   return (
     <motion.section
       initial={{ opacity: 0, y: 14 }}
@@ -174,7 +193,11 @@ function CloudScanSetting({
             Allow cloud scan
           </p>
           <p className="mt-0.5 text-[13px] leading-snug text-ink-soft">
-            Real receipt photos can use the cloud parser for sharper little finds.
+            {checked
+              ? providerReady
+                ? `Receipt photos go straight to ${providerReady.shortLabel} with your key.`
+                : "Real receipt photos can use Snoopy's cloud parser."
+              : "Use samples only, or turn this on when you want real receipt reads."}
           </p>
         </div>
         <button
@@ -196,6 +219,7 @@ function CloudScanSetting({
           />
         </button>
       </div>
+
     </motion.section>
   );
 }

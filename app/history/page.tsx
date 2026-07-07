@@ -89,13 +89,6 @@ export default function HistoryPage() {
   const [sortMode, setSortMode] = useState<SortMode>("uploaded");
   const [sortOpen, setSortOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
-  const categoryOptions = useMemo(
-    () =>
-      CATEGORY_ORDER.filter((category) =>
-        receipts.some((receipt) => receipt.category === category)
-      ),
-    [receipts]
-  );
   const visibleReceipts = useMemo(
     () =>
       categoryFilter === "all"
@@ -114,10 +107,6 @@ export default function HistoryPage() {
   const total = useMemo(
     () =>
       visibleReceipts.reduce((sum, receipt) => sum + receiptSpend(receipt), 0),
-    [visibleReceipts]
-  );
-  const photoCount = useMemo(
-    () => visibleReceipts.filter((receipt) => receipt.imageUrl).length,
     [visibleReceipts]
   );
   const headerLabel =
@@ -174,49 +163,50 @@ export default function HistoryPage() {
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.05 }}
-            className="grid grid-cols-3 gap-2.5 rounded-[28px] bg-paper p-4 shadow-soft"
+            className="grid grid-cols-2 gap-2.5 rounded-[28px] bg-paper p-4 shadow-soft"
           >
-            <HistoryStat label="Saved" value={`${visibleReceipts.length}`} />
+            <HistoryStat label="Receipts" value={`${visibleReceipts.length}`} />
             <HistoryStat label="Total" value={money(total)} />
-            <HistoryStat label="Photos" value={`${photoCount}`} />
           </motion.section>
 
-          {categoryOptions.length > 1 ? (
-            <CategoryFilters
-              active={categoryFilter}
-              categories={categoryOptions}
-              onChange={setCategoryFilter}
-            />
-          ) : null}
+          <CategoryFilters
+            active={categoryFilter}
+            categories={CATEGORY_ORDER}
+            onChange={setCategoryFilter}
+          />
 
-          <section className="flex flex-col gap-5">
-            {groups.map((group, groupIndex) => (
-              <div key={group.key} className="flex flex-col gap-2.5">
-                <div className="flex items-center justify-between px-1">
-                  <h2 className="font-display text-base font-semibold text-ink">
-                    {group.label}
-                  </h2>
-                  <span className="text-xs font-medium text-ink-faint">
-                    {group.receipts.length} receipt
-                    {group.receipts.length === 1 ? "" : "s"}
-                  </span>
+          {groups.length > 0 ? (
+            <section className="flex flex-col gap-5">
+              {groups.map((group, groupIndex) => (
+                <div key={group.key} className="flex flex-col gap-2.5">
+                  <div className="flex items-center justify-between px-1">
+                    <h2 className="font-display text-base font-semibold text-ink">
+                      {group.label}
+                    </h2>
+                    <span className="text-xs font-medium text-ink-faint">
+                      {group.receipts.length} receipt
+                      {group.receipts.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    {group.receipts.map((receipt, receiptIndex) => (
+                      <ReceiptCard
+                        key={receipt.id}
+                        receipt={receipt}
+                        index={Math.min(groupIndex + receiptIndex, 6)}
+                        enableMealSplit
+                        onToggleFavorite={toggleFavorite}
+                        onSetSplitBill={setReceiptSplitBill}
+                        onDeleteReceipt={removeReceipt}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <div className="flex flex-col gap-3">
-                  {group.receipts.map((receipt, receiptIndex) => (
-                    <ReceiptCard
-                      key={receipt.id}
-                      receipt={receipt}
-                      index={Math.min(groupIndex + receiptIndex, 6)}
-                      enableMealSplit
-                      onToggleFavorite={toggleFavorite}
-                      onSetSplitBill={setReceiptSplitBill}
-                      onDeleteReceipt={removeReceipt}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </section>
+              ))}
+            </section>
+          ) : (
+            <FilteredEmptyState category={categoryFilter} />
+          )}
         </>
       )}
     </div>
@@ -383,6 +373,26 @@ function CategoryFilterButton({
       <span aria-hidden="true">{emoji}</span>
       <span>{label}</span>
     </button>
+  );
+}
+
+function FilteredEmptyState({ category }: { category: CategoryFilter }) {
+  const meta = category === "all" ? null : categoryMeta(category);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-3xl bg-paper p-7 text-center shadow-soft"
+    >
+      <p className="text-4xl">{meta?.emoji ?? "🧾"}</p>
+      <p className="mt-2 font-display font-semibold text-ink">
+        No {meta?.label.toLowerCase() ?? "matching"} receipts here
+      </p>
+      <p className="mt-1 text-sm text-ink-soft">
+        Try another category or snap a new receipt when one pops up.
+      </p>
+    </motion.div>
   );
 }
 

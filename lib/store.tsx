@@ -23,6 +23,7 @@ const LEGACY_CLOUD_SCAN_CONSENT_KEY = "snoopy.cloudScanConsent.v1";
 const CLOUD_SCAN_CONSENT_PREFIX = "snoopy.cloudScanConsent.v2";
 const RECEIPTS_PREFIX = "snoopy.receipts.v3";
 const FRESH_INDEX_PREFIX = "snoopy.freshIndex.v3";
+const LOCAL_STORAGE_PREFIX = "snoopy.";
 const GUEST_SCOPE = "guest";
 const DEMO_RECEIPTS =
   process.env.NODE_ENV === "production" ? [] : sortNewest(buildSeedReceipts());
@@ -131,6 +132,15 @@ function readReceipts(scope: string): Receipt[] | null {
 
 function writeReceipts(scope: string, list: Receipt[]) {
   localStorage.setItem(receiptKey(scope), JSON.stringify(list));
+}
+
+function clearLocalAppData() {
+  for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+    const key = localStorage.key(index);
+    if (key?.startsWith(LOCAL_STORAGE_PREFIX)) {
+      localStorage.removeItem(key);
+    }
+  }
 }
 
 function blobImagePaths(list: Receipt[]): string[] {
@@ -461,19 +471,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       /* best-effort server session cleanup */
     });
     try {
-      localStorage.removeItem(PROFILE_KEY);
-      activeScope.current = GUEST_SCOPE;
-      const stored = readReceipts(GUEST_SCOPE) ?? DEMO_RECEIPTS;
-      writeReceipts(GUEST_SCOPE, stored);
-      freshIndex.current =
-        Number(localStorage.getItem(freshIndexKey(GUEST_SCOPE)) ?? "0") || 0;
-      setReceipts(stored);
+      clearLocalAppData();
     } catch {
-      activeScope.current = GUEST_SCOPE;
-      setReceipts(DEMO_RECEIPTS);
+      /* storage may be unavailable; in-memory state still gets cleared below */
     }
+    activeScope.current = GUEST_SCOPE;
+    freshIndex.current = 0;
+    setReceipts([]);
     setCurrentUser(null);
-    setCloudScanAllowedState(readCloudScanAllowed(GUEST_SCOPE));
+    setCloudScanAllowedState(false);
     setSyncState("local");
     setSyncError(null);
     setLastAddedId(null);

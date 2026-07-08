@@ -269,9 +269,9 @@ async function parseWithUserKey(
 
 /**
  * Send a receipt photo to the real Claude Vision parser (`/api/scan`) and get
- * back a `Receipt`. Throws on any failure (including timeout) so callers can
- * fall back to the mock parser — the "dual-mode by design" contract from
- * AGENTS.md. Crucially, this never hangs: a stalled request aborts and rejects.
+ * back a `Receipt`. Throws on any failure (including timeout) so real uploads
+ * can show a clear failure state instead of pretending a mock receipt was read.
+ * Crucially, this never hangs: a stalled request aborts and rejects.
  */
 export async function parseReceipt(file: File): Promise<Receipt> {
   const image = await prepareImage(file);

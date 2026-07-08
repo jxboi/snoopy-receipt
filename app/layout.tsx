@@ -18,11 +18,49 @@ const sans = Plus_Jakarta_Sans({
   display: "swap",
 });
 
+const appUrl =
+  process.env.NEXT_PUBLIC_APP_URL ??
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:3000");
+
+const title = "Snoopy — your receipt detective";
+const description =
+  "Snap a receipt. Snoopy sniffs out the interesting stuff you'd have thrown away.";
+
 export const metadata: Metadata = {
-  title: "Snoopy — your receipt detective",
-  description:
-    "Snap a receipt. Snoopy sniffs out the interesting stuff you'd have thrown away.",
+  metadataBase: new URL(appUrl),
+  title,
+  description,
   applicationName: "Snoopy",
+  openGraph: {
+    title,
+    description,
+    url: "/",
+    siteName: "Snoopy",
+    type: "website",
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "Snoopy receipt detective app preview",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title,
+    description,
+    images: [
+      {
+        url: "/twitter-image",
+        alt: "Snoopy receipt detective app preview",
+      },
+    ],
+  },
 };
 
 export const viewport: Viewport = {

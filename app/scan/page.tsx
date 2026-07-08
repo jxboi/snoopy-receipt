@@ -1,8 +1,9 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CountUp } from "@/components/CountUp";
 import { InsightCard } from "@/components/InsightCard";
 import { Mascot } from "@/components/Mascot";
@@ -17,11 +18,17 @@ import { findDuplicate } from "@/lib/dedupe";
 import { money, relativeDay, timeOfDay } from "@/lib/format";
 import { revealInsights } from "@/lib/insights";
 import { parseReceipt } from "@/lib/parseReceipt";
+import {
+  getScanLimitStatus,
+  recordScanUsage,
+  scanLimitConfig,
+  type ScanLimitStatus,
+} from "@/lib/scanLimits";
 import { hasSplitBill, receiptSpend } from "@/lib/spend";
 import { useStore } from "@/lib/store";
 import type { Receipt } from "@/lib/types";
 
-type Phase = "idle" | "sniffing" | "reveal";
+type Phase = "idle" | "sniffing" | "error" | "reveal";
 type PhotoSource = "camera" | "photos";
 type ReceiptImageAttachment = Pick<
   Receipt,
@@ -189,7 +196,10 @@ async function uploadReceiptImage(
 export default function ScanPage() {
   const router = useRouter();
   const {
+    ready,
     receipts,
+    currentUser,
+    isSignedIn,
     cloudScanAllowed,
     setCloudScanAllowed,
     nextScan,
@@ -200,6 +210,7 @@ export default function ScanPage() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [scanned, setScanned] = useState<Receipt | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [imageAttachment, setImageAttachment] =
     useState<ReceiptImageAttachment | null>(null);
   const [autoSavedId, setAutoSavedId] = useState<string | null>(null);
@@ -207,6 +218,9 @@ export default function ScanPage() {
   const [pendingPhotoSource, setPendingPhotoSource] =
     useState<PhotoSource | null>(null);
   const [privateScanLabel, setPrivateScanLabel] = useState<string | null>(null);
+  const [scanLimitStatus, setScanLimitStatus] =
+    useState<ScanLimitStatus | null>(null);
+  const [scanLimitNotice, setScanLimitNotice] = useState<string | null>(null);
   const [line, setLine] = useState(0);
   const cameraRef = useRef<HTMLInputElement>(null);
   const photosRef = useRef<HTMLInputElement>(null);
@@ -231,6 +245,53 @@ export default function ScanPage() {
     () => scanned?.items.filter((item) => item.isFood).length ?? 0,
     [scanned]
   );
+  const scanLimitScope = currentUser ? `user-${currentUser.id}` : "guest";
+
+  const limitReachedCopy = useCallback(
+    (status: ScanLimitStatus) =>
+      isSignedIn
+        ? `That's ${status.limit} receipt${status.limit === 1 ? "" : "s"} today. More receipt finds tomorrow.`
+        : `That's today's guest scan. Sign in for ${scanLimitConfig.signedInDailyReceipts} scans a day.`,
+    [isSignedIn]
+  );
+
+  const refreshScanLimitStatus = useCallback(() => {
+    if (!ready) return null;
+    const status = getScanLimitStatus({
+      isSignedIn,
+      scope: scanLimitScope,
+    });
+    setScanLimitStatus(status);
+    return status;
+  }, [isSignedIn, ready, scanLimitScope]);
+
+  const canChooseReceipt = useCallback(() => {
+    const status = refreshScanLimitStatus();
+    if (!status) {
+      setScanLimitNotice("One sec — checking today's receipt count.");
+      return false;
+    }
+    if (!status.allowed) {
+      setScanLimitNotice(limitReachedCopy(status));
+      return false;
+    }
+    return true;
+  }, [limitReachedCopy, refreshScanLimitStatus]);
+
+  const useScanQuota = useCallback(() => {
+    if (!canChooseReceipt()) return false;
+    const status = recordScanUsage({
+      isSignedIn,
+      scope: scanLimitScope,
+    });
+    setScanLimitStatus(status);
+    setScanLimitNotice(status.allowed ? null : limitReachedCopy(status));
+    return true;
+  }, [canChooseReceipt, isSignedIn, limitReachedCopy, scanLimitScope]);
+
+  useEffect(() => {
+    refreshScanLimitStatus();
+  }, [refreshScanLimitStatus]);
 
   // clear any pending timers only when the page unmounts — NOT on every photo
   // change, or we'd cancel the reveal timer that startScan just scheduled.
@@ -266,6 +327,7 @@ export default function ScanPage() {
   }
 
   function pickReceiptPhoto(source: PhotoSource) {
+    if (!canChooseReceipt()) return;
     refreshPrivateScanLabel();
     if (!cloudScanAllowed) {
       setPendingPhotoSource(source);
@@ -290,6 +352,7 @@ export default function ScanPage() {
     const run = ++scanRun.current;
     setPhoto(withPhoto);
     setScanned(null);
+    setScanError(null);
     setImageAttachment(null);
     setAutoSavedId(null);
     setPhase("sniffing");
@@ -303,49 +366,72 @@ export default function ScanPage() {
     });
     const parse: Promise<Receipt> = file
       ? cloudScanAllowed
-        ? parseReceipt(file).catch(() => nextScan()) // graceful fallback to mock
-        : Promise.resolve(nextScan())
+        ? parseReceipt(file)
+        : Promise.reject(new Error("cloud scan is off"))
       : Promise.resolve(nextScan());
     const imageReady: Promise<PreparedReceiptImage | null> =
       file && cloudScanAllowed && !privateCloudScan
         ? prepareReceiptImage(file)
         : Promise.resolve(null);
 
-    Promise.all([parse, imageReady, minBeat]).then(async ([r, image]) => {
-      if (scanRun.current !== run) return; // superseded by a reset/new scan
-      const attachment = image
-        ? await uploadReceiptImage(image, r.id).catch(() => image.fallback)
-        : null;
-      if (scanRun.current !== run) return; // upload may have been superseded too
-      if (file && cloudScanAllowed) {
-        const history = receipts.some((receipt) => receipt.id === r.id)
-          ? receipts
-          : [r, ...receipts];
-        const revealedInsights = revealInsights(r, history);
-        const nugget = revealedInsights[0]?.title;
-        saveReceipt({
-          ...r,
-          ...(nugget ? { nugget } : {}),
-          revealedInsights,
-          ...(attachment ?? {}),
-        });
-        setAutoSavedId(r.id);
-      }
-      setScanned(r);
-      setImageAttachment(attachment);
-      setPhase("reveal");
-    });
+    Promise.all([parse, imageReady, minBeat])
+      .then(async ([r, image]) => {
+        if (scanRun.current !== run) return; // superseded by a reset/new scan
+        const attachment = image
+          ? await uploadReceiptImage(image, r.id).catch(() => image.fallback)
+          : null;
+        if (scanRun.current !== run) return; // upload may have been superseded too
+        if (file && cloudScanAllowed) {
+          const history = receipts.some((receipt) => receipt.id === r.id)
+            ? receipts
+            : [r, ...receipts];
+          const revealedInsights = revealInsights(r, history);
+          const nugget = revealedInsights[0]?.title;
+          saveReceipt({
+            ...r,
+            ...(nugget ? { nugget } : {}),
+            revealedInsights,
+            ...(attachment ?? {}),
+          });
+          setAutoSavedId(r.id);
+        }
+        setScanned(r);
+        setImageAttachment(attachment);
+        setPhase("reveal");
+      })
+      .catch(() => {
+        if (scanRun.current !== run) return;
+        setScanned(null);
+        setImageAttachment(null);
+        setAutoSavedId(null);
+        setScanError(
+          "I couldn't read this receipt clearly enough. Nothing was saved."
+        );
+        setPhase("error");
+      });
   }
 
   function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
-    if (file && !cloudScanAllowed) {
+    if (!file) {
+      e.target.value = "";
+      return;
+    }
+    if (!cloudScanAllowed) {
       setPendingPhotoSource("photos");
       e.target.value = "";
       return;
     }
-    startScan(file ? URL.createObjectURL(file) : null, file);
+    if (!useScanQuota()) {
+      e.target.value = "";
+      return;
+    }
+    startScan(URL.createObjectURL(file), file);
     e.target.value = "";
+  }
+
+  function startSampleScan() {
+    if (useScanQuota()) startScan(null);
   }
 
   function save() {
@@ -398,6 +484,7 @@ export default function ScanPage() {
     if (photo) URL.revokeObjectURL(photo);
     setPhoto(null);
     setScanned(null);
+    setScanError(null);
     setImageAttachment(null);
     setAutoSavedId(null);
     setPhase("idle");
@@ -480,6 +567,11 @@ export default function ScanPage() {
                   Photos
                 </button>
               </div>
+              <ScanLimitMessage
+                status={scanLimitStatus}
+                notice={scanLimitNotice}
+                signedIn={isSignedIn}
+              />
               <AnimatePresence>
                 {pendingPhotoSource && (
                   <motion.div
@@ -518,14 +610,17 @@ export default function ScanPage() {
             </div>
 
             <button
-              onClick={() => startScan(null)}
+              onClick={startSampleScan}
               className="mt-4 rounded-2xl bg-ink/5 py-3.5 text-sm font-semibold text-ink active:scale-[0.99] transition-transform"
             >
               No receipt handy? Snoop a sample →
             </button>
 
             <p className="mt-4 text-center text-xs text-ink-faint">
-              Receipt photos are compressed before any upload.
+              Receipt photos are compressed before any upload.{" "}
+              <Link href="/privacy" className="font-semibold text-coral">
+                Privacy & trust
+              </Link>
             </p>
           </motion.div>
         )}
@@ -553,6 +648,52 @@ export default function ScanPage() {
                   {SNIFF_LINES[line]}
                 </motion.p>
               </AnimatePresence>
+            </div>
+          </motion.div>
+        )}
+
+        {/* --------------------------------------------------------- error */}
+        {phase === "error" && (
+          <motion.div
+            key="error"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="flex flex-1 flex-col items-center justify-center gap-5"
+          >
+            <ScanPreview photo={photo} />
+            <div className="flex flex-col items-center gap-3 text-center">
+              <Mascot size={76} mood="curious" />
+              <div>
+                <h2 className="font-display text-xl font-semibold text-ink">
+                  This one stayed a little mysterious
+                </h2>
+                <p className="mx-auto mt-1 max-w-[18rem] text-sm leading-snug text-ink-soft text-balance">
+                  {scanError ??
+                    "I couldn't read this receipt clearly enough. Nothing was saved."}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex w-full gap-3">
+              <button
+                type="button"
+                onClick={reset}
+                className="flex-1 rounded-2xl bg-ink/5 py-3.5 text-sm font-semibold text-ink active:scale-[0.98] transition-transform"
+              >
+                Try another
+              </button>
+              <button
+                type="button"
+                onClick={() => startScan(null)}
+                className="flex-[1.25] rounded-2xl py-3.5 text-sm font-semibold text-white shadow-lift active:scale-[0.98] transition-transform"
+                style={{
+                  background:
+                    "linear-gradient(150deg, var(--color-tangerine), var(--color-coral) 55%, var(--color-coral-deep))",
+                }}
+              >
+                Snoop a sample
+              </button>
             </div>
           </motion.div>
         )}
@@ -764,6 +905,39 @@ export default function ScanPage() {
         ) : null}
       </AnimatePresence>
     </div>
+  );
+}
+
+function ScanLimitMessage({
+  status,
+  notice,
+  signedIn,
+}: {
+  status: ScanLimitStatus | null;
+  notice: string | null;
+  signedIn: boolean;
+}) {
+  let message = notice ?? "Checking today's receipt count.";
+  if (!notice && status) {
+    if (!status.allowed) {
+      message = signedIn
+        ? `Today's ${status.limit} receipt scans are used.`
+        : `Today's guest scan is used. Sign in for ${scanLimitConfig.signedInDailyReceipts} scans a day.`;
+    } else {
+      message = signedIn
+        ? `${status.remaining} of ${status.limit} receipt scans left today.`
+        : `${status.remaining} guest receipt scan left today.`;
+    }
+  }
+
+  return (
+    <p
+      className={`w-full text-center text-xs leading-snug ${
+        notice ? "font-semibold text-coral-deep" : "text-ink-faint"
+      }`}
+    >
+      {message}
+    </p>
   );
 }
 

@@ -46,6 +46,13 @@ export async function POST(request: Request) {
   )}`;
 
   if (!process.env.RESEND_API_KEY) {
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.json(
+        { error: "email_unavailable" },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json({ ok: true, mode: "dev", devLink: link });
   }
 

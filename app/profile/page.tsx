@@ -2,7 +2,7 @@
 
 import { motion } from "motion/react";
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Mascot } from "@/components/Mascot";
 import {
   DEFAULT_AI_SCAN_SETTINGS,
@@ -24,7 +24,6 @@ export default function ProfilePage() {
     syncError,
     cloudScanAllowed,
     setCloudScanAllowed,
-    signIn,
     signOut,
     clearReceipts,
     reset,
@@ -148,6 +147,7 @@ export default function ProfilePage() {
               onChange={setCloudScanAllowed}
             />
             <ActionButton onClick={exportData} label="Export my data" />
+            <ActionLink href="/privacy" label="Privacy & trust" />
             {showDemoReset ? (
               <ActionButton onClick={reset} label="Reset demo data" />
             ) : null}
@@ -229,36 +229,6 @@ function SignedOutCard({
 }: {
   receiptCount: number;
 }) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">(
-    "idle"
-  );
-  const [devLink, setDevLink] = useState<string | null>(null);
-
-  async function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setStatus("sending");
-    setDevLink(null);
-
-    try {
-      const res = await fetch("/api/auth/magic-link", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email }),
-      });
-      if (!res.ok) throw new Error("magic link failed");
-      const payload = (await res.json()) as {
-        mode: "email" | "dev";
-        devLink?: string;
-      };
-      setDevLink(payload.devLink ?? null);
-      setStatus("sent");
-    } catch {
-      setStatus("error");
-    }
-  }
-
   return (
     <motion.section
       initial={{ opacity: 0, y: 14 }}
@@ -283,77 +253,15 @@ function SignedOutCard({
         Continue with Google
       </Link>
 
-      <div className="my-4 flex items-center gap-3">
-        <span className="h-px flex-1 bg-ink/10" />
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-          or
-        </span>
-        <span className="h-px flex-1 bg-ink/10" />
-      </div>
-
-      <form onSubmit={submit} className="flex flex-col gap-2.5">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
-            Name
-          </span>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            className="rounded-2xl border border-black/5 bg-cream px-4 py-2.5 text-sm font-medium text-ink outline-none focus:border-coral/50"
-            placeholder="Jamie"
-          />
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
-            Email
-          </span>
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            type="email"
-            className="rounded-2xl border border-black/5 bg-cream px-4 py-2.5 text-sm font-medium text-ink outline-none focus:border-coral/50"
-            placeholder="jamie@example.com"
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={status === "sending"}
-          className="mt-1.5 rounded-2xl bg-coral px-5 py-3 text-sm font-semibold text-white shadow-lift active:scale-[0.99] transition-transform"
-        >
-          {status === "sending" ? "Sending..." : "Send magic link"}
-        </button>
-      </form>
-
-      {status === "sent" ? (
-        <div className="mt-4 rounded-2xl bg-cream p-3 text-center">
-          <p className="text-sm font-semibold text-ink">
-            Check your inbox
-          </p>
-          <p className="mt-1 text-xs leading-snug text-ink-soft">
-            The link expires in 15 minutes.
-          </p>
-          {devLink ? (
-            <Link
-              href={devLink}
-              className="mt-3 inline-flex rounded-full bg-paper px-4 py-2 text-xs font-semibold text-coral shadow-soft"
-            >
-              Open dev magic link
-            </Link>
-          ) : null}
-        </div>
-      ) : null}
-
-      {status === "error" ? (
-        <p className="mt-3 text-center text-xs font-medium text-coral-deep">
-          Couldn&apos;t send that link. Check the email and try again.
-        </p>
-      ) : null}
-
       <p className="mt-4 text-center text-xs text-ink-faint">
         Your receipts stay on this device until you sign in.
       </p>
+      <Link
+        href="/privacy"
+        className="mt-3 block text-center text-xs font-semibold text-coral"
+      >
+        Read privacy & trust
+      </Link>
     </motion.section>
   );
 }
@@ -433,5 +341,17 @@ function ActionButton({
       <span>{label}</span>
       <span className="text-ink-faint">→</span>
     </button>
+  );
+}
+
+function ActionLink({ href, label }: { href: string; label: string }) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center justify-between rounded-2xl bg-paper px-4 py-3.5 text-left text-sm font-semibold text-ink shadow-soft active:scale-[0.99] transition-transform"
+    >
+      <span>{label}</span>
+      <span className="text-ink-faint">→</span>
+    </Link>
   );
 }
